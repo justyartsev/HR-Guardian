@@ -1,0 +1,13 @@
+:root{
+    --primary-black-1: rgba(26, 29, 36, 1);
+    --primary-black-2: rgba(35, 38, 48, 1);
+    --primary-black-3: rgba(44, 47, 58, 1);
+
+
+    --primasy-stroke-1: rgba(69, 61, 61, 1);
+
+    --primary-white-1: rgba(255, 255, 255, 1);
+
+    --secondary-orange-1: rgba(219, 101, 75, 1);
+    --secondary-red-1: rgba(205, 5, 27, 1);
+}
