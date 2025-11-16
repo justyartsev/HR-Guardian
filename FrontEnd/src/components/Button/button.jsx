@@ -7,8 +7,11 @@ const StyledButton = styled.button`
     border-radius: 15px;
     color: var(--primary-white-1);
     border: 1px solid var(--primasy-stroke-1);
+    width: auto;
+    height: auto;
     transition: all 300ms ease-out;
     &:hover{
+        cursor: pointer;
         background-color: var(--secondary-orange-1);
     }
     &:active{
