@@ -5,6 +5,11 @@ from datetime import datetime
 from typing import Optional
 from enum import Enum
 
+
+class LoginSchema(BaseModel):
+    email: EmailStr
+    password: str
+    
 class UserRole(str, Enum):
     employee = "employee"
     hr = "hr"
