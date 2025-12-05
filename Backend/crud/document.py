@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from models import Document, DocumentVersion
+from models.document import Document, DocumentVersion
 from schemas.document import (
     DocumentCreate,
     DocumentUpdate,

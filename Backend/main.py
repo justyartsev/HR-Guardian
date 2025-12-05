@@ -1,9 +1,8 @@
 from fastapi import FastAPI
-import models
-from database import engine
+from database import engine,Base
 from routes import auth,document,dialog
 
-models.Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="HR-Guardian")
 

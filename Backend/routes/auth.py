@@ -4,8 +4,8 @@ import bcrypt
 from datetime import datetime
 from core.jwt import create_token
 from core.security import verify_password
-from models import User
-from schemas import UserCreate, UserResponse, LoginSchema
+from models.user import User
+from schemas.user import UserCreate, UserResponse, LoginSchema
 from database import get_db
 
 
