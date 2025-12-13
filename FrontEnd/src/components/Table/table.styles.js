@@ -2,7 +2,7 @@ import styled from "styled-components";
 
 export const TableWrapper = styled.div`
     width: 100%;
-    background-color: var(--primary-black-2);
+    background-color: var(--primary-black-3);
     border-radius: 16px;
     overflow: hidden;
 `;
@@ -14,7 +14,7 @@ export const StyledTable = styled.table`
 `;
 
 export const Thead = styled.thead`
-    background-color: var(--primary-black-3);
+    background-color: var(--primary-black-1);
 `;
 
 export const Th = styled.th`
@@ -27,10 +27,11 @@ export const Th = styled.th`
 export const Tbody = styled.tbody``;
 
 export const Tr = styled.tr`
+    background-color: var(--primary-black-2)
     transition: background-color 200ms ease;
 
     &:hover {
-        background-color: var(--primary-black-3);
+        background-color: var(--primary-black-1);
     }
 `;
 
