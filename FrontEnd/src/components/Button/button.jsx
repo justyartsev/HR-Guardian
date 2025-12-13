@@ -21,8 +21,8 @@ const StyledButton = styled.button`
         background-color: var(--secondary-red-1);
     }`
 
-export function Button({children, onClick, type, ...params}) {
-    return <StyledButton {...params} type={type} onClick={onClick}>
+export function Button({children, onClick, variant = "default", ...params}) {
+    return <StyledButton {...params} $variant={variant} onClick={onClick}>
         {children}
     </StyledButton>
 }

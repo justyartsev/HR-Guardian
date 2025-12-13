@@ -3,6 +3,8 @@ import { Button } from './components/Button/button.jsx'
 import { Message } from './components/Message/message.jsx'
 import { Input } from './components/input/Input.jsx'
 import { Table } from "./components/Table/Table";
+import { EditDocumentModal } from "./components/Modal/EditDocumentModal";
+import { DeleteDocumentModal } from "./components/Modal/DeleteDocumentModal";
 
 const mockDocuments = [
   { 
@@ -31,30 +33,56 @@ const mockComplaints = [
 ];
 
 function App() {
-  const handleEdit = (item) => {
-    console.log("Редактировать:", item);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [documents, setDocuments] = useState(mockDocuments);
+
+  const handleEdit = (document) => {
+    setSelectedDocument(document);
+    setIsEditModalOpen(true);
   };
 
-  const handleDelete = (item) => {
-    console.log("Удалить:", item);
+  const handleDelete = (document) => {
+    setSelectedDocument(document);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = (document) => {
+    console.log("Удаляем документ:", document);
+    // Здесь будет запрос к API
+    setDocuments(documents.filter(doc => doc.id !== document.id));
+  };
+
+  const handleSaveDocument = (updatedDocument) => {
+    console.log("Сохраняем документ:", updatedDocument);
+    // Здесь будет запрос к API
+    setDocuments(documents.map(doc => 
+      doc.id === selectedDocument.id 
+        ? { ...doc, ...updatedDocument, date: new Date().toLocaleDateString('ru-RU') }
+        : doc
+    ));
   };
 
   const [text, setText] = useState("");
+  
 
-  function handleSend() {
-    if (!message.trim()) return;
+  const handleSend = () => {
+    if (!text.trim()) return;
 
-    console.log("Отправлено:", message);
-    setMessage("");
-  }
+    
+    console.log("Отправлено:", text);
+
+    setText("");
+  };
 
 
   return (
     <div style={{backgroundColor: "darkblue"}}>
       <Button style={{width: "400px", minHeight: "50px"}} >qweqwewqwe</Button>
-      <div style={{ width: "400px", padding: "40px" }}>
+      <div style={{ padding: "40px", maxWidth: "500px" }}>
       <Input
-        placeholder="Спросите что-нибудь..."
+        placeholder="Введите сообщение..."
         value={text}
         onChange={(e) => setText(e.target.value)}
         onSend={handleSend}
@@ -94,6 +122,20 @@ function App() {
           onDelete={handleDelete}
         />
       </div>
+      {/* Модальные окна */}
+      <EditDocumentModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        document={selectedDocument}
+        onSave={handleSaveDocument}
+      />
+
+      <DeleteDocumentModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        document={selectedDocument}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   )
 }

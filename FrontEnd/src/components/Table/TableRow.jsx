@@ -15,6 +15,13 @@ export function TableRow({ item, type, onEdit, onDelete }) {
         return "";
     }
   };
+    const handleEdit = () => {
+        onEdit(item); // Передаем весь объект документа
+    };
+
+    const handleDelete = () => {
+        onDelete(item); // Передаем весь объект документа
+    };
 
   return (
     <Tr>

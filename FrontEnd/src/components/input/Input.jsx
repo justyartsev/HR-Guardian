@@ -34,9 +34,7 @@ const StyledTextarea = styled.textarea`
   resize: none;
   overflow-y: auto;
 
-  /* ⬇️ СКРЫВАЕМ SCROLLBAR */
   scrollbar-width: none;
-
   &::-webkit-scrollbar {
     display: none;
   }
@@ -46,9 +44,8 @@ const StyledTextarea = styled.textarea`
   }
 `;
 
-
 const SendButton = styled.button`
-  width: 52px;              /* ⬅️ реальная зона кнопки */
+  width: 52px;
   border: none;
   background: transparent;
 
@@ -59,23 +56,40 @@ const SendButton = styled.button`
   color: var(--primary-white-1);
   cursor: pointer;
 
-  transition: color 200ms ease;
+  transition: color 200ms ease, opacity 200ms ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     color: var(--secondary-orange-1);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 `;
 
 export function Input({ value, onChange, onSend, ...params }) {
+  const isDisabled = !value.trim();
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (!isDisabled) {
+        onSend();
+      }
+    }
+  };
+
   return (
     <Wrapper>
       <StyledTextarea
         value={value}
         onChange={onChange}
+        onKeyDown={handleKeyDown}
         rows={1}
         {...params}
       />
-      <SendButton onClick={onSend}>
+      <SendButton onClick={onSend} disabled={isDisabled}>
         <FiSend size={20} />
       </SendButton>
     </Wrapper>
