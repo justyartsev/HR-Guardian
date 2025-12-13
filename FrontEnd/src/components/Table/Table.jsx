@@ -1,32 +1,51 @@
 import { TableWrapper, StyledTable, Thead, Th, Tbody } from "./table.styles";
 import { TableRow } from "./TableRow";
 
-export function Table({ data }) {
-    return (
-        <TableWrapper>
-            <StyledTable>
-                <Thead>
-                    <tr>
-                        <Th>Название</Th>
-                        <Th>Дата обновления</Th>
-                        <Th>Ответственный</Th>
-                        <Th></Th>
-                    </tr>
-                </Thead>
+export function Table({ 
+  data, 
+  type = "documents", // По умолчанию таблица документов
+  onEdit,
+  onDelete 
+}) {
+  const headers = {
+    documents: [
+      { key: "name", label: "Название" },
+      { key: "date", label: "Дата обновления" },
+      { key: "owner", label: "Ответственный" },
+      { key: "actions", label: "" }
+    ],
+    complaints: [
+      { key: "name", label: "Название" },
+      { key: "date", label: "Дата создания" },
+      { key: "user", label: "Пользователь" },
+      { key: "delete", label: "" }
+    ]
+  };
 
-                <Tbody>
-                    {data.map((item, index) => (
-                        <TableRow
-                            key={index}
-                            name={item.name}
-                            date={item.date}
-                            owner={item.owner}
-                            onEdit={() => console.log("edit", item)}
-                            onDelete={() => console.log("delete", item)}
-                        />
-                    ))}
-                </Tbody>
-            </StyledTable>
-        </TableWrapper>
-    );
+  const currentHeaders = headers[type];
+
+  return (
+    <TableWrapper>
+      <StyledTable>
+        <Thead>
+          <tr>
+            {currentHeaders.map((header) => (
+              <Th key={header.key}>{header.label}</Th>
+            ))}
+          </tr>
+        </Thead>
+        <Tbody>
+          {data.map((item, index) => (
+            <TableRow
+              key={index}
+              item={item}
+              type={type}
+              onEdit={() => onEdit && onEdit(item)}
+              onDelete={() => onDelete && onDelete(item)}
+            />
+          ))}
+        </Tbody>
+      </StyledTable>
+    </TableWrapper>
+  );
 }
