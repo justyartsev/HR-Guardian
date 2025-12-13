@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from './components/Button/button.jsx'
 import { Message } from './components/Message/message.jsx'
 import { Input } from './components/input/Input.jsx'
@@ -38,14 +39,27 @@ function App() {
     console.log("Удалить:", item);
   };
 
+  const [text, setText] = useState("");
+
+  function handleSend() {
+    if (!message.trim()) return;
+
+    console.log("Отправлено:", message);
+    setMessage("");
+  }
+
 
   return (
     <div style={{backgroundColor: "darkblue"}}>
       <Button style={{width: "400px", minHeight: "50px"}} >qweqwewqwe</Button>
-      <Input 
+      <div style={{ width: "400px", padding: "40px" }}>
+      <Input
         placeholder="Спросите что-нибудь..."
-        style={{ width: "400px", marginBottom: "20px" }}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onSend={handleSend}
       />
+    </div>
       <Message type={"output"} alertMsg="weqiuryjbdsfudsiyarweagjguh">loremas dqwewqeqweq wewqeqwe  qwe qweqw32reawafasd asdwe qweqweqwedsaq weqweqwe qweqwsadeqwe gjkysadd siugusidfhgaj kdhbeuw iraghtriul</Message>
       <Message type={"input"}>asdasds</Message>
       {/* Таблица документов */}
