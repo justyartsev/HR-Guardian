@@ -1,6 +1,6 @@
 import styled from "styled-components"
 import { Button } from "../Button/button"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { FiPlus } from "react-icons/fi";
 import ContextMenu from "../ContextMenu/contextMenu";
 
@@ -40,17 +40,33 @@ const NameDiv = styled.div`
 `
 
 export default function SideMenu(){
+    //placeHolder for newChat function
+    async function newChat() {
+        const response = await fetch();
+        return response.ok;
+    }
+
+    //placeHolder for loadChats function
+    async function loadChats() {
+        const response = await fetch();
+        return response.ok;
+    }
+
+    //placeholder to load chats on component render or dependency change (no deps now)
+    useEffect(() => loadChats, [])
+
+
     const [active, setActive] = useState("chat");
     const [chats, setChats] = useState([]);
     const [username, setUsername] = useState("...");
 
-    function LoadChats() {}
 
-    return <MainDiv>
+    return <MainDiv id="SideMenu">
         <InnerDiv>
-            <Button style={{height: '4rem'}} onClick={() => {}}><FiPlus size={"2rem"}/> Новый чат</Button>
+            <Button style={{height: '4rem'}} onClick={() => {newChat()}}><FiPlus size={"2rem"}/> Новый чат</Button>
             {/* {Генерация кнопок из chats} */}
-            <Button style={{height: '4rem', position: "relative"}} onClick={() => {}}>Чат 1 <ContextMenu style={{position:"absolute", right: "1rem", height: "2.5rem"}}/></Button>
+            <Button style={{height: '4rem', position: "relative"}} onClick={() => {}}>Чат 1 <ContextMenu id={1}/></Button>
+            <Button style={{height: '4rem', position: "relative"}} onClick={() => {}}>Чат 1 <ContextMenu id={2}/></Button>
         </InnerDiv>
         <div>
         <NameDiv>{username}</NameDiv>
