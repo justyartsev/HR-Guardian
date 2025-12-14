@@ -20,8 +20,8 @@ const ModalContent = styled.div`
   border-radius: 12px;
   padding: 2rem;
   width: 90%;
-  max-width: 420px; /* Уменьшил с 500px */
-  min-width: 380px; /* Уменьшил с 450px */
+  max-width: ${props => props.$size === "large" ? "500px" : "420px"};
+  min-width: ${props => props.$size === "large" ? "450px" : "380px"};
   max-height: 85vh;
   overflow-y: auto;
   border: 1px solid var(--primasy-stroke-1);
@@ -29,7 +29,7 @@ const ModalContent = styled.div`
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
 `;
 
-export function Modal({ isOpen, onClose, children, title }) {
+export function Modal({ isOpen, onClose, children, title, size = "medium" }) {
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === "Escape") onClose();
@@ -50,7 +50,7 @@ export function Modal({ isOpen, onClose, children, title }) {
 
   return createPortal(
     <Overlay onClick={onClose}>
-      <ModalContent onClick={(e) => e.stopPropagation()}>
+      <ModalContent onClick={(e) => e.stopPropagation()} $size={size}>
         {title && <h2 style={{
           fontSize: "1.8rem",
           marginBottom: "1rem",
@@ -63,4 +63,4 @@ export function Modal({ isOpen, onClose, children, title }) {
     </Overlay>,
     document.body
   );
-}   
+}

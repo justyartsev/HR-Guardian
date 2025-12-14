@@ -227,7 +227,7 @@ export function EditDocumentModal({
           type="date"
           value={effectiveDate || formatDateForInput(document?.date)}
           onChange={(e) => setEffectiveDate(e.target.value)}
-          // Убрал required и min - просто поле ввода
+          
         />
       </InputGroup>
       
