@@ -2,6 +2,26 @@ import { Modal } from "./Modal";
 import { Button } from "../Button/button";
 import styled from "styled-components";
 
+const ModalButton = styled(Button)`
+  background-color: transparent;
+  border: 1px solid var(--primasy-stroke-1);
+  color: var(--primary-white-1);
+
+  &:hover {
+    background-color: ${({ variant }) =>
+      variant === "danger"
+        ? "var(--secondary-red-1)"
+        : "var(--secondary-orange-1)"};
+  }
+
+  &:active {
+    background-color: ${({ variant }) =>
+      variant === "danger"
+        ? "var(--secondary-red-1)"
+        : "var(--secondary-orange-1)"};
+  }
+`;
+
 const Highlight = styled.span`
   color: var(--secondary-orange-1);
   font-weight: 600;
@@ -66,12 +86,12 @@ export function DeleteDocumentModal({
         gap: "1.6rem", 
         justifyContent: "center"
       }}>
-        <Button variant="danger" onClick={onClose}>
+        <ModalButton variant="alert" onClick={onClose}>
           Отмена
-        </Button>
-        <Button variant="alert" onClick={handleConfirm}>
+        </ModalButton>
+        <ModalButton variant="danger" onClick={handleConfirm}>
           Удалить
-        </Button>
+        </ModalButton>
       </div>
     </Modal>
   );
