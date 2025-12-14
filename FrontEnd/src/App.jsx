@@ -88,8 +88,8 @@ function App() {
         onSend={handleSend}
       />
     </div>
-      <Message type={"output"} alertMsg="weqiuryjbdsfudsiyarweagjguh">loremas dqwewqeqweq wewqeqwe  qwe qweqw32reawafasd asdwe qweqweqwedsaq weqweqwe qweqwsadeqwe gjkysadd siugusidfhgaj kdhbeuw iraghtriul</Message>
-      <Message type={"input"}>asdasds</Message>
+      <Message variant={"output"} alertMsg="weqiuryjbdsfudsiyarweagjguh">loremas dqwewqeqweq wewqeqwe  qwe qweqw32reawafasd asdwe qweqweqwedsaq weqweqwe qweqwsadeqwe gjkysadd siugusidfhgaj kdhbeuw iraghtriul</Message>
+      <Message variant={"input"}>asdasds</Message>
       {/* Таблица документов */}
       <div style={{ marginBottom: "40px" }}>
         <h2 style={{ 

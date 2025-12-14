@@ -2,7 +2,7 @@ import styled from "styled-components"
 import alertIco from '../../assets/alertMsg.png'
 
 const CustomDiv = styled.div`
-background-color: ${props => props.type == "input" ? "var(--primary-black-3)" : props.type == "output" ? "var(--primary-black-2)" : "var(--secondary-orange-1)" };
+background-color: ${props => props.$variant == "input" ? "var(--primary-black-3)" : props.$variant == "output" ? "var(--primary-black-2)" : "var(--secondary-orange-1)" };
 color: var(--primary-white-1);
 padding: 2rem;
 font-size: 1.6rem;
@@ -15,9 +15,9 @@ text-align: left;
 justify-content: flex-start;
 `
 
-export function Message({children, type, alertMsg}) {
-    return <div style={{textAlign: type == "input" ? "right" : "left"}}>
-    <CustomDiv type={type}>{children}</CustomDiv><br/>
+export function Message({children, variant, alertMsg}) {
+    return <div style={{textAlign: variant == "input" ? "right" : "left"}}>
+    <CustomDiv $variant={variant}>{children}</CustomDiv><br/>
     {alertMsg && <img src={alertIco} alt="alertImg" style={{width: "2rem", paddingLeft: "1rem", paddingRight: "1rem"}} title={alertMsg}/>}
     </div>
 }

@@ -1,7 +1,7 @@
 import styled from "styled-components"
 
 const StyledButton = styled.button`
-    background-color: var(${props => props?.type == "danger" ? "--secondary-red-1" : props?.type == "alert" ? '--secondary-orange-1' : "--primary-black-2"});
+    background-color: var(${props => props?.$variant == "danger" ? "--secondary-red-1" : props?.$variant == "alert" ? '--secondary-orange-1' : "--primary-black-2"});
     font-size: 1.6rem;
     align-items: center;
     flex-wrap: nowrap;
@@ -21,7 +21,7 @@ const StyledButton = styled.button`
         background-color: var(--secondary-red-1);
     }`
 
-export function Button({children, onClick, variant = "default", ...params}) {
+export function Button({children, onClick, variant, ...params}) {
     return <StyledButton {...params} $variant={variant} onClick={onClick}>
         {children}
     </StyledButton>

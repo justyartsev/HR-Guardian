@@ -55,11 +55,10 @@ export default function SideMenu(){
         <div>
         <NameDiv>{username}</NameDiv>
         <InnerDiv>
-            <Button name="chat" onClick={(e) => {setActive(e.target.name)}} type={active == "chat" ? "alert" : ""} style={{height: '4rem'}}>Чат-бот</Button>
-            <Button name="knowledge" onClick={(e) => {setActive(e.target.name)}} type={active == "knowledge" ? "alert" : ""} style={{height: '4rem'}}>База знаний</Button>
-            <Button name="queries" onClick={(e) => {setActive(e.target.name)}} type={active == "queries" ? "alert" : ""} style={{height: '4rem'}}>Журнал запросов</Button>
+            <Button name="chat" onClick={(e) => {setActive(e.target.name)}} variant={active == "chat" ? "alert" : ""} style={{height: '4rem'}}>Чат-бот</Button>
+            <Button name="knowledge" onClick={(e) => {setActive(e.target.name)}} variant={active == "knowledge" ? "alert" : ""} style={{height: '4rem'}}>База знаний</Button>
+            <Button name="queries" onClick={(e) => {setActive(e.target.name)}} variant={active == "queries" ? "alert" : ""} style={{height: '4rem'}}>Журнал запросов</Button>
         </InnerDiv>
         </div>
     </MainDiv>
 }
-
