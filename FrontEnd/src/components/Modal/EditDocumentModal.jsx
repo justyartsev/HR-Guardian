@@ -3,6 +3,26 @@ import { useState } from "react";
 import { Modal } from "./Modal";
 import { Button } from "../Button/button";
 
+const ModalButton = styled(Button)`
+  background-color: transparent;
+  border: 1px solid var(--primasy-stroke-1);
+  color: var(--primary-white-1);
+
+  &:hover {
+    background-color: ${({ variant }) =>
+      variant === "danger"
+        ? "var(--secondary-red-1)"
+        : "var(--secondary-orange-1)"};
+  }
+
+  &:active {
+    background-color: ${({ variant }) =>
+      variant === "danger"
+        ? "var(--secondary-red-1)"
+        : "var(--secondary-orange-1)"};
+  }
+`;
+
 const InputGroup = styled.div`
   margin-bottom: 1.6rem;
   width: 80%; /* Уменьшил ширину */
@@ -137,7 +157,7 @@ export function EditDocumentModal({
   };
 
   const handleSubmit = () => {
-    // Убрал проверку даты - достаточно только ввода
+    
     onSave({
       ...document,
       effectiveDate,
@@ -219,12 +239,12 @@ export function EditDocumentModal({
         justifyContent: "center",
         marginTop: "1.2rem"
       }}>
-        <Button variant="danger" onClick={handleClose}>
+        <ModalButton variant="alert" onClick={handleClose}>
           Отмена
-        </Button>
-        <Button variant="alert" onClick={handleSubmit}>
+        </ModalButton>
+        <ModalButton variant="alert" onClick={handleSubmit}>
           Сохранить изменения
-        </Button>
+        </ModalButton>
       </div>
     </Modal>
   );
