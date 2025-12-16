@@ -17,6 +17,7 @@ FROM nginx:stable-alpine
 COPY --from=build /app/dist /var/www/static/
 COPY ./envchange.sh /var/www/static/
 RUN chmod +x /var/www/static/envchange.sh
+RUN dos2unix /var/www/static/envchange.sh
 
 COPY ./.nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
