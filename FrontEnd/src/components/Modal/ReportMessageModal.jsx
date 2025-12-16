@@ -3,6 +3,26 @@ import { useState } from "react";
 import { Modal } from "./Modal";
 import { Button } from "../Button/button";
 
+const ModalButton = styled(Button)`
+  background-color: transparent;
+  border: 1px solid var(--primasy-stroke-1);
+  color: var(--primary-white-1);
+
+  &:hover {
+    background-color: ${({ variant }) =>
+      variant === "danger"
+        ? "var(--secondary-red-1)"
+        : "var(--secondary-orange-1)"};
+  }
+
+  &:active {
+    background-color: ${({ variant }) =>
+      variant === "danger"
+        ? "var(--secondary-red-1)"
+        : "var(--secondary-orange-1)"};
+  }
+`;
+
 const MessageContent = styled.div`
   background-color: var(--primary-black-3);
   border-radius: 10px;
@@ -32,19 +52,8 @@ const MessageText = styled.p`
   margin-bottom: 0.8rem;
 `;
 
-const MessageLink = styled.a`
-  color: var(--secondary-orange-1);
-  text-decoration: underline;
-  font-size: 1.3rem;
-  cursor: pointer;
-  
-  &:hover {
-    color: #ff8c66;
-  }
-`;
-
 const CommentSection = styled.div`
-  margin-bottom: 2rem;
+  margin-bottom: 1.6rem;
 `;
 
 const CommentLabel = styled.div`
@@ -53,60 +62,31 @@ const CommentLabel = styled.div`
   font-weight: 600;
   margin-bottom: 0.8rem;
   font-style: italic;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-`;
-
-const CommentIcon = styled.span`
-  font-size: 1.6rem;
 `;
 
 const CommentTextarea = styled.textarea`
-  width: 100%;
-  min-height: 100px;
-  padding: 1rem;
+  width: 90%; /* Уменьшил ширину с 100% до 90% */
+  margin: 0 auto; /* Центрируем */
+  display: block; /* Чтобы сработал margin auto */
+  min-height: 80px; /* Уменьшил высоту */
+  padding: 0.8rem;
   background-color: var(--primary-black-3);
   border: 1px solid var(--primasy-stroke-1);
   border-radius: 8px;
   color: var(--primary-white-1);
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-family: inherit;
   resize: vertical;
   
   &:focus {
     outline: none;
     border-color: var(--secondary-orange-1);
-    box-shadow: 0 0 0 2px rgba(219, 101, 75, 0.2);
   }
   
   &::placeholder {
     color: rgba(255, 255, 255, 0.4);
     font-style: italic;
   }
-`;
-
-const CheckboxContainer = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  margin-bottom: 1.6rem;
-  cursor: pointer;
-  user-select: none;
-`;
-
-const CheckboxInput = styled.input`
-  width: 1.8rem;
-  height: 1.8rem;
-  cursor: pointer;
-  accent-color: var(--secondary-orange-1);
-`;
-
-const CheckboxLabel = styled.label`
-  font-size: 1.4rem;
-  color: var(--primary-white-1);
-  cursor: pointer;
-  font-weight: 500;
 `;
 
 const ModalActions = styled.div`
@@ -123,14 +103,9 @@ export function ReportMessageModal({
   onReport 
 }) {
   const [comment, setComment] = useState("");
-  const [agreeToReport, setAgreeToReport] = useState(false);
 
   const handleSubmit = () => {
-    if (!agreeToReport) {
-      alert("Пожалуйста, подтвердите отправку жалобы");
-      return;
-    }
-    
+    // Убрали проверку чекбокса
     onReport({
       messageId: message?.id,
       messageContent: message?.content,
@@ -142,12 +117,8 @@ export function ReportMessageModal({
 
   const handleClose = () => {
     setComment("");
-    setAgreeToReport(false);
     onClose();
   };
-
-  const messageContent = message?.content || "Дата вашей следующей аттестации - 20.10.2025. Если вы хотите посмотреть соответствующий документ, то вот он.";
-  const documentLink = message?.documentLink || "https://example.com/document.pdf";
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose}>
@@ -157,60 +128,41 @@ export function ReportMessageModal({
       </MessageHeader>
       
       <MessageContent>
-        <MessageText>{messageContent}</MessageText>
-        <MessageLink href={documentLink} target="_blank" rel="noopener noreferrer">
-          "Ссылка на документ"
-        </MessageLink>
+        <MessageText>{message?.content}</MessageText>
       </MessageContent>
       
       <CommentSection>
-        <CommentLabel>
-          <CommentIcon>💬</CommentIcon>
-          Комментарий к жалобе:
-        </CommentLabel>
+        <CommentLabel>Комментарий к жалобе:</CommentLabel>
         <CommentTextarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           placeholder="Введите комментарий..."
-          maxLength={500}
+          maxLength={300}
         />
         <div style={{
-          fontSize: "1.2rem",
+          fontSize: "1.1rem",
           color: "rgba(255, 255, 255, 0.5)",
           textAlign: "right",
-          marginTop: "0.4rem"
+          marginTop: "0.4rem",
+          width: "90%",
+          margin: "0.4rem auto 0 auto"
         }}>
-          {comment.length}/500 символов
+          {comment.length}/300 символов
         </div>
       </CommentSection>
       
-      <CheckboxContainer onClick={() => setAgreeToReport(!agreeToReport)}>
-        <CheckboxInput
-          type="checkbox"
-          checked={agreeToReport}
-          onChange={() => setAgreeToReport(!agreeToReport)}
-          id="report-confirm"
-        />
-        <CheckboxLabel htmlFor="report-confirm">
-          Подтверждаю отправку жалобы
-        </CheckboxLabel>
-      </CheckboxContainer>
+      
       
       <ModalActions>
-        <Button variant="danger" onClick={handleClose}>
+        <ModalButton variant="alert" onClick={handleClose}>
           Отмена
-        </Button>
-        <Button 
-          variant="alert" 
+        </ModalButton>
+        <ModalButton 
+          variant="danger" 
           onClick={handleSubmit}
-          disabled={!agreeToReport}
-          style={{
-            opacity: agreeToReport ? 1 : 0.6,
-            cursor: agreeToReport ? "pointer" : "not-allowed"
-          }}
         >
           Пожаловаться
-        </Button>
+        </ModalButton>
       </ModalActions>
     </Modal>
   );
