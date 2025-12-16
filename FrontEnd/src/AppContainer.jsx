@@ -38,7 +38,9 @@ export function AppContainer() {
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  
   const [text, setText] = useState("");
 
   // ===== handlers =====
@@ -84,13 +86,31 @@ export function AppContainer() {
     setText("");
   };
 
+  const onReportMessage = (messageContent) => {
+    setSelectedMessage({
+      id: Date.now(),
+      content: messageContent,
+      documentLink: "#",
+      timestamp: new Date().toISOString()
+    });
+    setIsReportModalOpen(true);
+  };
+
+  const handleConfirmReport = (reportData) => {
+    console.log("Жалоба отправлена:", reportData);
+    // Здесь можно добавить жалобу в таблицу жалоб
+    alert("Жалоба успешно отправлена! ID: " + reportData.messageId);
+  };
+
   return (
     <App
       documents={documents}
       complaints={complaints}
       selectedDocument={selectedDocument}
+      selectedMessage={selectedMessage}
       isEditModalOpen={isEditModalOpen}
       isDeleteModalOpen={isDeleteModalOpen}
+      isReportModalOpen={isReportModalOpen}
       text={text}
 
       onEdit={handleEdit}
@@ -99,8 +119,13 @@ export function AppContainer() {
       onSaveDocument={handleSaveDocument}
       onSend={handleSend}
       onTextChange={setText}
+      
+      onReportMessage={onReportMessage}
+      onConfirmReport={handleConfirmReport}
+      
       closeEditModal={() => setIsEditModalOpen(false)}
       closeDeleteModal={() => setIsDeleteModalOpen(false)}
+      closeReportModal={() => setIsReportModalOpen(false)}
     />
   );
 }

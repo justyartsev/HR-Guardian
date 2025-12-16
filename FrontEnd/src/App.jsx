@@ -4,13 +4,16 @@ import { Input } from "./components/input/Input.jsx";
 import { Table } from "./components/Table/Table";
 import { EditDocumentModal } from "./components/Modal/EditDocumentModal";
 import { DeleteDocumentModal } from "./components/Modal/DeleteDocumentModal";
+import { ReportMessageModal } from "./components/Modal/ReportMessageModal";
 
 function App({
   documents,
   complaints,
   selectedDocument,
+  selectedMessage,
   isEditModalOpen,
   isDeleteModalOpen,
+  isReportModalOpen,
   text,
 
   onEdit,
@@ -21,6 +24,9 @@ function App({
   onTextChange,
   closeEditModal,
   closeDeleteModal,
+  closeReportModal, 
+  onReportMessage, 
+  onConfirmReport,
 }) {
   return (
     <div
@@ -54,7 +60,14 @@ function App({
         <Message variant="output" alertMsg="weqiuryjbdsfudsiyarweagjguh">
           loremas dqwewqeqweq wewqeqwe
         </Message>
-
+        <Message 
+          variant="input" 
+          showReportButton={true}
+          onReport={onReportMessage}
+        >
+          Дата вашей следующей аттестации - 20.10.2025. 
+          Если вы хотите посмотреть соответствующий документ, то вот он - "Ссылка"
+        </Message>
         <Message variant="input">asdasds</Message>
 
         {/* Документы */}
@@ -97,6 +110,12 @@ function App({
           onClose={closeDeleteModal}
           document={selectedDocument}
           onConfirm={onConfirmDelete}
+        />
+        <ReportMessageModal
+          isOpen={isReportModalOpen}
+          onClose={closeReportModal}
+          message={selectedMessage}
+          onReport={onConfirmReport}
         />
       </div>
     </div>
