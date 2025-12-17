@@ -39,41 +39,82 @@ const NameDiv = styled.div`
     width: auto;
 `
 
-export default function SideMenu(){
-    //placeHolder for newChat function
+export default function SideMenu({ 
+  active = "chat", 
+  onTabChange, 
+  chats = [], 
+  onNewChat, 
+  username = "...",
+  onChatSelect 
+}) {
+    // placeHolder for newChat function
     async function newChat() {
         const response = await fetch();
         return response.ok;
     }
 
-    //placeHolder for loadChats function
+    // placeHolder for loadChats function
     async function loadChats() {
         const response = await fetch();
         return response.ok;
     }
 
-    //placeholder to load chats on component render or dependency change (no deps now)
+    // placeholder to load chats on component render or dependency change (no deps now)
     useEffect(() => loadChats, [])
 
-
-    const [active, setActive] = useState("chat");
-    const [chats, setChats] = useState([]);
-    const [username, setUsername] = useState("...");
-
+    // Обработчик клика по вкладке
+    const handleTabClick = (tabName) => {
+        if (onTabChange) {
+            onTabChange(tabName);
+        }
+    };
 
     return <MainDiv id="SideMenu">
         <InnerDiv>
-            <Button style={{height: '4rem'}} onClick={() => {newChat()}}><FiPlus size={"2rem"}/> Новый чат</Button>
+            <Button 
+                style={{height: '4rem'}} 
+                onClick={onNewChat ? () => onNewChat() : () => newChat()}
+            >
+                <FiPlus size={"2rem"}/> Новый чат
+            </Button>
             {/* {Генерация кнопок из chats} */}
-            <Button style={{height: '4rem', position: "relative"}} onClick={() => {}}>Чат 1 <ContextMenu id={1}/></Button>
-            <Button style={{height: '4rem', position: "relative"}} onClick={() => {}}>Чат 1 <ContextMenu id={2}/></Button>
+            {chats.map((chat) => (
+                <Button 
+                    key={chat.id}
+                    style={{height: '4rem', position: "relative"}} 
+                    onClick={() => onChatSelect && onChatSelect(chat)}
+                >
+                    {chat.name} <ContextMenu id={chat.id}/>
+                </Button>
+            ))}
         </InnerDiv>
         <div>
         <NameDiv>{username}</NameDiv>
         <InnerDiv>
-            <Button name="chat" onClick={(e) => {setActive(e.target.name)}} variant={active == "chat" ? "alert" : ""} style={{height: '4rem'}}>Чат-бот</Button>
-            <Button name="knowledge" onClick={(e) => {setActive(e.target.name)}} variant={active == "knowledge" ? "alert" : ""} style={{height: '4rem'}}>База знаний</Button>
-            <Button name="queries" onClick={(e) => {setActive(e.target.name)}} variant={active == "queries" ? "alert" : ""} style={{height: '4rem'}}>Журнал запросов</Button>
+            <Button 
+                name="chat" 
+                onClick={() => handleTabClick("chat")} 
+                variant={active === "chat" ? "alert" : ""} 
+                style={{height: '4rem'}}
+            >
+                Чат-бот
+            </Button>
+            <Button 
+                name="knowledge" 
+                onClick={() => handleTabClick("knowledge")} 
+                variant={active === "knowledge" ? "alert" : ""} 
+                style={{height: '4rem'}}
+            >
+                База знаний
+            </Button>
+            <Button 
+                name="queries" 
+                onClick={() => handleTabClick("queries")} 
+                variant={active === "queries" ? "alert" : ""} 
+                style={{height: '4rem'}}
+            >
+                Журнал запросов
+            </Button>
         </InnerDiv>
         </div>
     </MainDiv>
