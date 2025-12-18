@@ -1,0 +1,37 @@
+services:
+  backend:
+    container_name: backend
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    environment:
+      SECRET_KEY: beablodola
+      ALGORITHM: HS256
+      DATABASE_URL: postgresql://hr_api:hr_api_pass54321@api-database:5432/hr
+    depends_on:
+      api-database:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+
+  api-database:
+    image: postgres:17
+    container_name: backend-database
+    environment:
+      POSTGRES_DB: hr
+      POSTGRES_USER: hr_api
+      POSTGRES_PASSWORD: hr_api_pass54321
+    ports:
+      - "10230:5432"
+    volumes:
+      - api-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U hr_api -d hr" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  api-data:
+
+
