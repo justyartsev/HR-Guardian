@@ -1,5 +1,5 @@
 import styled from "styled-components";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Modal } from "./Modal";
 import { Button } from "../Button/button";
 
@@ -25,7 +25,7 @@ const ModalButton = styled(Button)`
 
 const InputGroup = styled.div`
   margin-bottom: 1.6rem;
-  width: 80%; /* Уменьшил ширину */
+  width: 80%;
   margin-left: auto;
   margin-right: auto;
 `;
@@ -56,7 +56,7 @@ const Input = styled.input`
 
 const FileInput = styled.div`
   margin-bottom: 1.6rem;
-  width: 80%; /* Уменьшил ширину */
+  width: 80%;
   margin-left: auto;
   margin-right: auto;
 `;
@@ -73,7 +73,7 @@ const FileButton = styled.label`
   width: 100%;
   cursor: pointer;
   transition: all 200ms ease;
-  min-height: 60px;
+  min-height: 80px;
   
   &:hover {
     border-color: var(--secondary-orange-1);
@@ -82,14 +82,14 @@ const FileButton = styled.label`
 `;
 
 const FileInputText = styled.span`
-  font-size: 1.3rem;
+  font-size: 1.4rem;
   color: rgba(255, 255, 255, 0.9);
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.4rem;
   text-align: center;
 `;
 
 const FileInputSubtext = styled.span`
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   color: rgba(255, 255, 255, 0.6);
   text-align: center;
 `;
@@ -115,19 +115,11 @@ const FileIcon = styled.span`
   flex-shrink: 0;
 `;
 
-const DocumentName = styled.div`
-  font-size: 1.4rem;
-  margin-bottom: 1.6rem;
-  padding: 0.8rem 1.2rem;
-  background-color: var(--primary-black-3);
-  border-radius: 8px;
-  border-left: 3px solid var(--secondary-orange-1);
-  color: var(--primary-white-1);
-  line-height: 1.4;
-  text-align: center;
-  width: 80%; /* Уменьшил ширину */
-  margin-left: auto;
-  margin-right: auto;
+const OptionalText = styled.span`
+  font-size: 1.1rem;
+  color: var(--secondary-orange-1);
+  font-style: italic;
+  margin-left: 0.5rem;
 `;
 
 const Divider = styled.div`
@@ -135,31 +127,27 @@ const Divider = styled.div`
   background-color: var(--primasy-stroke-1);
   margin: 1.2rem 0;
   opacity: 0.5;
-  width: 90%; /* Уменьшил ширину */
+  width: 90%;
   margin-left: auto;
   margin-right: auto;
 `;
 
-export function EditDocumentModal({ 
+const ButtonGroup = styled.div`
+  display: flex;
+  gap: 1.2rem;
+  justify-content: center;
+  margin-top: 2rem;
+`;
+
+export function AddDocumentModal({ 
   isOpen, 
   onClose, 
-  document, 
-  onSave 
+  onAdd 
 }) {
+  const [documentName, setDocumentName] = useState("");
   const [effectiveDate, setEffectiveDate] = useState("");
+  const [responsiblePerson, setResponsiblePerson] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
-
-  // Инициализируем дату при открытии модалки
-  useEffect(() => {
-    if (isOpen && document?.date) {
-      // Преобразуем дату из формата DD.MM.YYYY в YYYY-MM-DD для input[type="date"]
-      const parts = document.date.split('.');
-      if (parts.length === 3) {
-        const formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        setEffectiveDate(formattedDate);
-      }
-    }
-  }, [isOpen, document]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -169,63 +157,66 @@ export function EditDocumentModal({
   };
 
   const handleSubmit = () => {
-    // Преобразуем дату обратно в формат DD.MM.YYYY для таблицы
-    let formattedDate = document?.date; // Оставляем старую дату, если не изменили
-    
-    if (effectiveDate) {
-      const dateObj = new Date(effectiveDate);
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const year = dateObj.getFullYear();
-      formattedDate = `${day}.${month}.${year}`;
+    if (!documentName.trim()) {
+      alert("Введите название документа");
+      return;
     }
-    
-    onSave({
-      ...document,
-      date: formattedDate, // Обновляем дату
-      effectiveDate: effectiveDate,
+
+    if (!effectiveDate) {
+      alert("Введите дату вступления в силу");
+      return;
+    }
+
+    if (!responsiblePerson.trim()) {
+      alert("Введите ответственного");
+      return;
+    }
+
+    // Преобразуем дату из YYYY-MM-DD в DD.MM.YYYY
+    const dateObj = new Date(effectiveDate);
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    const formattedDate = `${day}.${month}.${year}`;
+
+    const newDocument = {
+      id: Date.now(), // Генерируем уникальный ID
+      name: documentName,
+      date: formattedDate,
+      owner: responsiblePerson,
       file: selectedFile
-    });
+    };
+
+    onAdd(newDocument);
     handleClose();
   };
 
   const handleClose = () => {
+    setDocumentName("");
     setEffectiveDate("");
+    setResponsiblePerson("");
     setSelectedFile(null);
     onClose();
   };
 
-  // Убрал функцию formatDateForInput, т.к. теперь используем useEffect
-
   return (
-    <Modal isOpen={isOpen} onClose={handleClose}>
-      <h2 style={{ 
-        fontSize: "1.8rem",
-        marginBottom: "1rem",
-        color: "var(--primary-white-1)",
-        fontWeight: "600",
-        textAlign: "center"
-      }}>
-        Редактирование документа
-      </h2>
-      
-      <DocumentName>
-        "{document?.name}"
-      </DocumentName>
-      
-      <Divider />
-      
+    <Modal 
+      isOpen={isOpen} 
+      onClose={handleClose}
+      title="Добавление документа"
+    >
       <FileInput>
         <input
           type="file"
-          id="file-upload"
+          id="file-upload-add"
           style={{ display: "none" }}
           onChange={handleFileChange}
           accept=".pdf,.doc,.docx,.txt"
         />
-        <FileButton htmlFor="file-upload">
-          <FileInputText>Загрузите обновлённый документ</FileInputText>
+        <FileButton htmlFor="file-upload-add">
+          <FileInputText>Выберите документ для загрузки <OptionalText>(необязательно)</OptionalText></FileInputText>
           <FileInputSubtext>Поддерживаемые форматы: PDF, DOC, DOCX, TXT</FileInputSubtext>
+          <FileInputSubtext>Загрузка файла временно отключена для тестирования</FileInputSubtext>
         </FileButton>
         {selectedFile && (
           <SelectedFile>
@@ -234,33 +225,44 @@ export function EditDocumentModal({
           </SelectedFile>
         )}
       </FileInput>
-      
-      <Divider />
-      
+
       <InputGroup>
-        <Label>Дата вступления документа в силу</Label>
+        <Label>Название документа</Label>
+        <Input
+          type="text"
+          value={documentName}
+          onChange={(e) => setDocumentName(e.target.value)}
+          placeholder="Введите название документа"
+        />
+      </InputGroup>
+
+      <InputGroup>
+        <Label>Дата вступления в силу документа</Label>
         <Input
           type="date"
           value={effectiveDate}
           onChange={(e) => setEffectiveDate(e.target.value)}
         />
       </InputGroup>
-      
-      <Divider />
-      
-      <div style={{ 
-        display: "flex", 
-        gap: "1.2rem", 
-        justifyContent: "center",
-        marginTop: "1.2rem"
-      }}>
+
+      <InputGroup>
+        <Label>Ответственный</Label>
+        <Input
+          type="text"
+          value={responsiblePerson}
+          onChange={(e) => setResponsiblePerson(e.target.value)}
+          placeholder="Введите ФИО ответственного"
+        />
+      </InputGroup>
+
+      <ButtonGroup>
         <ModalButton variant="alert" onClick={handleClose}>
           Отмена
         </ModalButton>
         <ModalButton variant="alert" onClick={handleSubmit}>
-          Сохранить изменения
+          Добавить
         </ModalButton>
-      </div>
+      </ButtonGroup>
     </Modal>
   );
 }
