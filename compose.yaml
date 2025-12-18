@@ -8,6 +8,7 @@ services:
       SECRET_KEY: beablodola
       ALGORITHM: HS256
       DATABASE_URL: postgresql://hr_api:hr_api_pass54321@api-database:5432/hr
+    command: --root-path /api
     depends_on:
       api-database:
         condition: service_healthy
