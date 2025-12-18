@@ -1,20 +1,18 @@
 services:
   backend:
+    container_name: hr-guardian-backend
     image: olekkm/hr-guardian-backend:latest
-    container_name: backend
     environment:
-      SECRET_KEY: sinepiuh
+      SECRET_KEY: beablodola
       ALGORITHM: HS256
       DATABASE_URL: postgresql://hr_api:hr_api_pass54321@api-database:5432/hr
     depends_on:
       api-database:
         condition: service_healthy
-    ports:
-      - "4000:4000"
 
   api-database:
     image: postgres:17
-    container_name: backend-database
+    container_name: hr-guardian-database
     environment:
       POSTGRES_DB: hr
       POSTGRES_USER: hr_api
@@ -29,5 +27,23 @@ services:
       timeout: 5s
       retries: 5
 
+  gateway:
+    image: nginx:stable-alpine
+    volumes:
+      - ./.nginx/:/etc/nginx/conf.d/
+    ports:
+      - "10000:80"
+    command: nginx -g "daemon off;"
+    depends_on:
+      - backend
+
+  frontend:
+    environment:
+      - API_URL=127.0.0.1:10000
+    image: olekkm/hr-guardian-frontend:latest
+    container_name: hr-guardian-frontend
+
 volumes:
   api-data:
+
+
