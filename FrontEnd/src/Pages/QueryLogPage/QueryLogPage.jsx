@@ -1,7 +1,6 @@
 import styled from "styled-components";
 import SideMenu from "../../components/SideMenu/sideMenu";
 import { Table } from "../../components/Table/Table";
-import { Button } from "../../components/Button/button";
 
 const LayoutContainer = styled.div`
   display: flex;
@@ -42,14 +41,8 @@ const ContentWrapper = styled.div`
   gap: 2rem;
 `;
 
-const AddButtonWrapper = styled.div`
-  margin-top: 2rem;
-  display: flex;
-  justify-content: flex-end;
-`;
-
-export function KnowledgeBasePage({ 
-  documents, 
+export function QueryLogPage({ 
+  complaints, 
   userInfo, 
   onTabChange, 
   chats, 
@@ -57,9 +50,7 @@ export function KnowledgeBasePage({
   onChatSelect,
   onRenameChat, 
   onDeleteChat,
-  onEditDocument,
-  onDeleteDocument,
-  onAddDocument 
+  onDeleteComplaint 
 }) {
   const handleTabChange = (tab) => {
     if (onTabChange) onTabChange(tab);
@@ -73,22 +64,14 @@ export function KnowledgeBasePage({
     if (onChatSelect) onChatSelect(chat);
   };
 
-  const handleEditDocument = (document) => {
-    if (onEditDocument) onEditDocument(document);
-  };
-
-  const handleDeleteDocument = (document) => {
-    if (onDeleteDocument) onDeleteDocument(document);
-  };
-
-  const handleAddDocument = () => {
-    if (onAddDocument) onAddDocument();
+  const handleDeleteComplaint = (complaint) => {
+    if (onDeleteComplaint) onDeleteComplaint(complaint);
   };
 
   return (
     <LayoutContainer>
       <SideMenu 
-        active="knowledge"
+        active="queries"
         onTabChange={handleTabChange}
         chats={chats}
         onNewChat={handleNewChat}
@@ -99,24 +82,14 @@ export function KnowledgeBasePage({
       />
       
       <MainContent>
-        <Title>База знаний</Title>
+        <Title>Журнал запросов</Title>
         
         <ContentWrapper>
           <Table 
-            data={documents}
-            type="documents"
-            onEdit={handleEditDocument}
-            onDelete={handleDeleteDocument}
+            data={complaints}
+            type="complaints"
+            onDelete={handleDeleteComplaint}
           />
-          
-          <AddButtonWrapper>
-            <Button 
-              onClick={handleAddDocument}
-              style={{ height: '4rem', padding: '0 2rem' }}
-            >
-              Добавить документ
-            </Button>
-          </AddButtonWrapper>
         </ContentWrapper>
       </MainContent>
     </LayoutContainer>

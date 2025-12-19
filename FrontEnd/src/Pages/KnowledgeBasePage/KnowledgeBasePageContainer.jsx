@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react"; 
 import { useNavigate } from "react-router-dom";
 import { KnowledgeBasePage } from "./KnowledgeBasePage";
 import { EditDocumentModal } from "../../components/Modal/EditDocumentModal";
@@ -25,11 +25,76 @@ export function KnowledgeBasePageContainer() {
     username: "Петров Пётр Петрович"
   });
 
-  const [chats] = useState([
-    { id: 1, name: "Чат 1" },
-    { id: 2, name: "Чат 2" },
-  ]);
+   const [chats, setChats] = useState(() => {
+    const savedChats = localStorage.getItem('hrg_chats');
+    if (savedChats) {
+      return JSON.parse(savedChats);
+    }
+    return [
+      { id: 1, name: "Чат 1", messages: [] },
+      { id: 2, name: "Чат 2", messages: [] },
+    ];
+  });
+  // Добавляем обработчики для работы с чатами (как в MainPageContainer)
+  const handleNewChat = () => {
+    const generateChatId = () => Date.now();
+    const generateChatName = (existingChats) => {
+      const chatNumbers = existingChats
+        .map(chat => {
+          const match = chat.name.match(/Чат (\d+)/);
+          return match ? parseInt(match[1]) : 0;
+        })
+        .filter(num => num > 0);
+      
+      const nextNumber = chatNumbers.length > 0 ? Math.max(...chatNumbers) + 1 : 1;
+      return `Чат ${nextNumber}`;
+    };
+    
+    const newChatId = generateChatId();
+    const newChatName = generateChatName(chats);
+    
+    const newChat = {
+      id: newChatId,
+      name: newChatName,
+      messages: []
+    };
+    
+    const updatedChats = [...chats, newChat];
+    setChats(updatedChats);
+    localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
+    
+    console.log("Создан новый чат:", newChatName);
+    
+    // Переходим в чат
+    navigate("/chat");
+  };
 
+  const handleChatSelect = (chat) => {
+    console.log("Выбран чат:", chat);
+    // Переходим в чат
+    navigate("/chat");
+  };
+
+  const handleRenameChat = (chatId, newName) => {
+    const updatedChats = chats.map(chat => 
+      chat.id === chatId ? { ...chat, name: newName } : chat
+    );
+    setChats(updatedChats);
+    localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
+    console.log(`Чат ${chatId} переименован в:`, newName);
+  };
+
+  const handleDeleteChat = (chatId) => {
+    if (chats.length <= 1) {
+      alert("Нельзя удалить последний чат");
+      return;
+    }
+    
+    const updatedChats = chats.filter(chat => chat.id !== chatId);
+    setChats(updatedChats);
+    localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
+    console.log("Удален чат:", chatId);
+  };
   // Обработчик открытия модалки редактирования
   const handleEditDocument = (document) => {
     setSelectedDocument(document);
@@ -84,19 +149,19 @@ export function KnowledgeBasePageContainer() {
   // Обработчик смены вкладок с навигацией
   const handleTabChange = (tab) => {
     if (tab === "chat") {
-      navigate("/chat");
+        navigate("/chat");
     } else if (tab === "queries") {
-      alert("Страница журнала запросов еще не реализована");
+        navigate("/query-log"); // Изменяем на новый маршрут
     }
   };
 
-  const handleNewChat = () => {
+  /*const handleNewChat = () => {
     console.log("Создание нового чата");
   };
 
   const handleChatSelect = (chat) => {
     console.log("Выбран чат:", chat);
-  };
+  };*/
 
   return (
     <>
@@ -107,6 +172,8 @@ export function KnowledgeBasePageContainer() {
         chats={chats}
         onNewChat={handleNewChat}
         onChatSelect={handleChatSelect}
+        onRenameChat={handleRenameChat} // Добавляем
+        onDeleteChat={handleDeleteChat}
         onEditDocument={handleEditDocument}
         onDeleteDocument={handleDeleteDocument}
         onAddDocument={handleAddDocument}
