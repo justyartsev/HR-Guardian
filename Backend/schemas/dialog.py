@@ -3,22 +3,32 @@ from datetime import datetime
 from typing import List, Optional
 
 
+# Модель источника (документ, на который ссылается ответ)
+class SourceReference(BaseModel):
+    document_id: int
+    version_id: int
+    chunk_index: int
+
+
 class MessageBase(BaseModel):
     sender: str
     text: str
 
 
 class MessageCreate(MessageBase):
-    pass
+    # источники могут быть опциональны при создании
+    sources: Optional[List[SourceReference]] = None
 
 
 class Message(MessageBase):
     id: int
     dialog_id: int
+    # источники документов, использованные для ответа
+    sources: Optional[List[SourceReference]] = None
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class DialogBase(BaseModel):

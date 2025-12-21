@@ -34,6 +34,7 @@ class DocumentVersionResponse(DocumentVersionBase):
 
     class Config:
         from_attributes = True
+        use_enum_values = True
 
 
 # ---------------------------
@@ -46,7 +47,7 @@ class DocumentBase(BaseModel):
 
 
 class DocumentCreate(DocumentBase):
-    initial_version: DocumentVersionCreate
+    initial_version: Optional[DocumentVersionCreate] = None
 
 
 class DocumentUpdate(BaseModel):
@@ -61,3 +62,4 @@ class DocumentResponse(DocumentBase):
 
     class Config:
         from_attributes = True
+        use_enum_values = True

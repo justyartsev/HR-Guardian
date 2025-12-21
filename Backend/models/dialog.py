@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
@@ -20,8 +20,14 @@ class Message(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     dialog_id = Column(Integer, ForeignKey("dialogs.id"))
-    sender = Column(String)   # "user" или "bot"
+    # отправитель сообщения: "user" или "bot"
+    sender = Column(String)
+    # текст сообщения
     text = Column(Text)
+    # источники документов, использованные для ответа (для bot только)
+    # формат: [{"document_id": int, "version_id": int, "chunk_index": int}, ...]
+    sources = Column(JSON, nullable=True, default=list)
+    # дата создания сообщения
     created_at = Column(DateTime, default=datetime.utcnow)
 
     dialog = relationship("Dialog", back_populates="messages")
