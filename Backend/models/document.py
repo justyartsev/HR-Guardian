@@ -1,19 +1,16 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import relationship
 import enum
 from datetime import datetime
+from database import Base
+from schemas.document import DocumentFormat
 
-Base = declarative_base()
-
-
-class DocumentFormat(enum.Enum):
-    PDF = "pdf"
-    DOCX = "docx"
-    MARKDOWN = "md"
-    TXT = "txt"
-    HTML = "html"
-    WIKI = "wiki"
-    FAQ = "faq"
+# Статусы синхронизации версии документа с RAG системой
+class SyncStatus(enum.Enum):
+    PENDING = "pending"  # ожидает синхронизации с RAG
+    SYNCED = "synced"    # успешно синхронизирован
+    SYNCING = "syncing"  # в процессе синхронизации
+    ERROR = "error"      # ошибка при синхронизации
 
 
 class Document(Base):
@@ -29,10 +26,10 @@ class Document(Base):
     current_version_id = Column(Integer, ForeignKey("document_versions.id"), nullable=True)
 
     # связь с версионностью
-    versions = relationship("DocumentVersion", back_populates="document")
+    versions = relationship("DocumentVersion", back_populates="document", foreign_keys="DocumentVersion.document_id")
 
     # доступ к текущей версии
-    current_version = relationship("DocumentVersion", foreign_keys=[current_version_id])
+    current_version = relationship("DocumentVersion", foreign_keys=[current_version_id], viewonly=True)
 
 
 class DocumentVersion(Base):
@@ -50,8 +47,17 @@ class DocumentVersion(Base):
     # бинарные файлы (pdf/docx) храним как путь
     file_path = Column(String(500), nullable=True)
 
+    # статус синхронизации с RAG системой
+    sync_status = Column(Enum(SyncStatus), default=SyncStatus.PENDING, nullable=False)
+
+    # время последней синхронизации с RAG
+    synced_at = Column(DateTime, nullable=True)
+
+    # количество чанков, созданных в RAG (для отслеживания)
+    total_chunks = Column(Integer, nullable=True)
+
     # дата загрузки/обновления
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # связь с документом
-    document = relationship("Document", back_populates="versions")
+    document = relationship("Document", back_populates="versions", foreign_keys=[document_id])

@@ -4,7 +4,7 @@ from jose import jwt, JWTError
 from core.config import settings
 from database import get_db
 from sqlalchemy.orm import Session
-from models import User
+from models.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
@@ -27,3 +27,12 @@ def get_current_user(
         
     except JWTError:
         raise HTTPException(status_code=401, detail="Token expired or invalid")
+
+
+def require_role(*allowed_roles: str):
+    """Dependency factory: проверяет роль текущего пользователя."""
+    def _require(current_user = Depends(get_current_user)):
+        if current_user.role.name not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Insufficient role")
+        return current_user
+    return _require
