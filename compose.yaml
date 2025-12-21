@@ -2,7 +2,7 @@ services:
   backend:
     container_name: hr-guardian-backend
     build:
-      context: ./backend
+      context: ./Backend
       dockerfile: dockerfile
     environment:
       SECRET_KEY: beablodola
@@ -23,7 +23,7 @@ services:
     ports:
       - "10230:5432"
     volumes:
-      - api-data:/var/lib/postgresql/data
+      - api-data:/var/lib/postgresql/data:rw
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U hr_api -d hr" ]
       interval: 5s
@@ -39,6 +39,7 @@ services:
     command: nginx -g "daemon off;"
     depends_on:
       - backend
+      - frontend
 
   frontend:
     environment:
@@ -47,8 +48,19 @@ services:
       context: ./FrontEnd/
       dockerfile: Dockerfile
     container_name: hr-guardian-frontend
+  
+  rag:
+    container_name: hr-guardian-rag
+    environment:
+      - name=value
+    build:
+      context: ./RAG
+      dockerfile: dockerfile
+    command: --host 0.0.0.0 --port 9000
+    volumes:
+      - vectordb:/app/vectordb:rw
 
 volumes:
   api-data:
-
+  vectordb: 
 
