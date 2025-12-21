@@ -5,7 +5,8 @@ import { ReportMessageModal } from "../../components/Modal/ReportMessageModal";
 
 // Функция для генерации уникального ID чата
 const generateChatId = () => Date.now();
-
+// Получаем пользователя
+const user = JSON.parse(localStorage.getItem('user'));
 // Функция для генерации имени нового чата
 const generateChatName = (existingChats) => {
   const chatNumbers = existingChats
@@ -217,7 +218,7 @@ export function MainPageContainer() {
         onTabChange={handleTabChange}
         onRenameChat={handleRenameChat}    // Добавляем
         onDeleteChat={handleDeleteChat} 
-        username="Петров Пётр Петрович"
+        username={user?.username || "Петров Пётр Петрович"}
       />
 
       <ReportMessageModal

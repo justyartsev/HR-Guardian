@@ -3,6 +3,7 @@ import SideMenu from "../../components/SideMenu/sideMenu";
 import { Message } from "../../components/Message/message";
 import { Input } from "../../components/input/Input";
 import { ChatWindow } from "../../components/ChatWindow/ChatWindow";
+import { HeaderAuthButton } from '../../components/AuthButton/HeaderAuthButton';
 
 const LayoutContainer = styled.div`
   display: flex;
@@ -135,6 +136,7 @@ export function MainPage({
       
       <MainContent>
         <Title>HR-Guardian</Title>
+        <HeaderAuthButton /> {/* Добавляем кнопку авторизации */}
         
         {!isEmptyChat ? (
           // Если есть сообщения - показываем нормальный интерфейс
