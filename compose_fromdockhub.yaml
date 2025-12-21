@@ -49,9 +49,7 @@ services:
     container_name: hr-guardian-rag
     environment:
       - name=value
-    build:
-      context: ./RAG
-      dockerfile: dockerfile
+#    image: "imagename" #Указать ссылку на образ
     command: --host 0.0.0.0 --port 9000
     volumes:
       - vectordb:/app/vectordb:rw
