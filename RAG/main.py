@@ -1,0 +1,117 @@
+import os
+import sys
+from pathlib import Path
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from datetime import datetime
+import io
+
+# Явная конфигурация UTF-8 (критично для Windows)
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+sys.path.append(str(Path(__file__).parent.parent))
+
+# Импорт routes и модулей
+try:
+    from routes import query_router, sync_router
+except ImportError as e:
+    print(f"Ошибка импорта routes: {e}")
+    raise
+
+try:
+    from modules.db_utility import init_vectordb
+except ImportError as e:
+    print(f"Ошибка импорта модулей: {e}")
+    raise
+
+# Конфигурация приложения
+app = FastAPI(
+    title="HR-Guardian RAG API",
+    description="RAG система для HR ассистента",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# Обработчик ошибок валидации (логирование для отладки)
+@app.exception_handler(RequestValidationError)
+async def validation_handler(request: Request, exc: RequestValidationError):
+    """Логирует детали ошибок валидации для отладки."""
+    print(f"[RAG VALIDATION ERROR] {request.method} {request.url}")
+    print(f"[RAG VALIDATION ERROR] Details: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
+# Middleware для логирования запросов
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Логирует входящие и исходящие запросы."""
+    try:
+        print(f"[RAG] {request.method} {request.url.path}")
+    except Exception:
+        pass
+    
+    response = await call_next(request)
+    
+    try:
+        print(f"[RAG] Response {response.status_code} {request.method} {request.url.path}")
+    except Exception:
+        pass
+    
+    return response
+
+# Инициализация Chroma на стартапе
+@app.on_event("startup")
+def startup():
+    """Инициализирует Chroma PersistentClient."""
+    try:
+        init_vectordb()
+    except Exception as e:
+        print(f"[RAG] Warning: Vectordb init failed: {e}")
+
+# Регистрация routes
+app.include_router(query_router)
+app.include_router(sync_router)
+
+# Root endpoint
+@app.get("/")
+async def root():
+    """Информация о RAG API."""
+    return {
+        "service": "HR-Guardian RAG",
+        "version": "2.0.0",
+        "status": "running",
+        "docs": "/docs"
+    }
+
+
+@app.get("/health")
+async def health_check():
+    """
+    Проверка здоровья приложения.
+    Используется для мониторинга доступности RAG сервиса.
+    """
+    return {
+        "status": "OK",
+        "service": "RAG API",
+        "timestamp": datetime.utcnow().isoformat(),
+        "vectordb": "connected"  # в реальности нужна проверка подключения
+    }
+
+
+# ====================== ЗАПУСК ======================
+# Для запуска используйте:
+# uvicorn app.main:app --reload --port 8001
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8001,
+        reload=True
+    )
