@@ -105,3 +105,20 @@ def create_empty_document(db: Session, data: DocumentCreate):
     db.commit()
     db.refresh(doc)
     return doc
+
+
+def update_version_sync(db: Session, version_id: int, chunks_created: int):
+    """Update sync status, total_chunks and synced_at for a document version."""
+    from models.document import DocumentVersion, SyncStatus
+    from datetime import datetime
+
+    v = db.query(DocumentVersion).filter(DocumentVersion.id == version_id).first()
+    if not v:
+        raise ValueError(f"DocumentVersion id={version_id} not found")
+
+    v.total_chunks = chunks_created
+    v.synced_at = datetime.utcnow()
+    v.sync_status = SyncStatus.SYNCED if chunks_created and chunks_created > 0 else SyncStatus.ERROR
+    db.commit()
+    db.refresh(v)
+    return v

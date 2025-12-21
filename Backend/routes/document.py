@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from database import get_db
 import crud.document as document_crud
+from dependencies.user import get_current_user, require_role
+from models.user import User as UserModel
 from schemas.document import (
     DocumentCreate,
     DocumentUpdate,
@@ -27,7 +29,8 @@ async def create_document(
     format: DocumentFormat = Form(...),
     content: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(require_role('hr', 'admin'))
 ):
     # Проверка: либо файл, либо текст
     if not content and not file:
@@ -90,7 +93,7 @@ def get_document(doc_id: int, db: Session = Depends(get_db)):
 # UPDATE DOCUMENT META (title, effective_from)
 # --------------------------------------------------
 @router.put("/{doc_id}", response_model=DocumentResponse)
-def update_document(doc_id: int, data: DocumentUpdate, db: Session = Depends(get_db)):
+def update_document(doc_id: int, data: DocumentUpdate, db: Session = Depends(get_db), current_user: UserModel = Depends(require_role('hr', 'admin'))):
     doc = document_crud.update_document(db, doc_id, data)
     if not doc:
         raise HTTPException(404, "Document not found")
@@ -101,7 +104,7 @@ def update_document(doc_id: int, data: DocumentUpdate, db: Session = Depends(get
 # DELETE DOCUMENT
 # --------------------------------------------------
 @router.delete("/{doc_id}")
-def delete_document(doc_id: int, db: Session = Depends(get_db)):
+def delete_document(doc_id: int, db: Session = Depends(get_db), current_user: UserModel = Depends(require_role('hr', 'admin'))):
     ok = document_crud.delete_document(db, doc_id)
     if not ok:
         raise HTTPException(404, "Document not found")
@@ -117,7 +120,8 @@ async def add_version(
     format: DocumentFormat = Form(...),
     content: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(require_role('hr', 'admin'))
 ):
     doc = document_crud.get_document(db, doc_id)
     if not doc:
