@@ -7,13 +7,12 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 import io
 
-# Явная конфигурация UTF-8 (критично для Windows)
+# Явная конфигурация UTF-8 для Windows
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Импорт routes и модулей
 try:
     from routes import query_router, sync_router
 except ImportError as e:
@@ -26,7 +25,7 @@ except ImportError as e:
     print(f"Ошибка импорта модулей: {e}")
     raise
 
-# Конфигурация приложения
+# Приложение FastAPI
 app = FastAPI(
     title="HR-Guardian RAG API",
     description="RAG система для HR ассистента",
@@ -35,10 +34,10 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Обработчик ошибок валидации (логирование для отладки)
+# Обработчик ошибок валидации
 @app.exception_handler(RequestValidationError)
 async def validation_handler(request: Request, exc: RequestValidationError):
-    """Логирует детали ошибок валидации для отладки."""
+    """Логирует ошибки валидации (обработка исключений)."""
     print(f"[RAG VALIDATION ERROR] {request.method} {request.url}")
     print(f"[RAG VALIDATION ERROR] Details: {exc.errors()}")
     return JSONResponse(
@@ -46,10 +45,10 @@ async def validation_handler(request: Request, exc: RequestValidationError):
         content={"detail": exc.errors()},
     )
 
-# Middleware для логирования запросов
+# Middleware логирования запросов
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Логирует входящие и исходящие запросы."""
+    """Логирует HTTP запросы/ответы (параметры: request, call_next; возвращает: response)."""
     try:
         print(f"[RAG] {request.method} {request.url.path}")
     except Exception:
@@ -64,10 +63,10 @@ async def log_requests(request: Request, call_next):
     
     return response
 
-# Инициализация Chroma на стартапе
+# Инициализация Chroma при стартапе
 @app.on_event("startup")
 def startup():
-    """Инициализирует Chroma PersistentClient."""
+    """Инициализирует Chroma PersistentClient (параметры: нет; возвращает: None)."""
     try:
         init_vectordb()
     except Exception as e:

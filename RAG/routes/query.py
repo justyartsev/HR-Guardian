@@ -12,7 +12,7 @@ router = APIRouter(prefix="/rag", tags=["RAG Query"])
 # Схемы данных
 
 class SourceReference(BaseModel):
-    """Метаданные источника (документ и чанк)"""
+    """Метаданные источника (document_id, version_id, chunk_index, text_snippet)."""
     document_id: Optional[int] = None
     version_id: Optional[int] = None
     chunk_index: Optional[int] = None
@@ -20,20 +20,20 @@ class SourceReference(BaseModel):
 
 
 class ContextMessage(BaseModel):
-    """Сообщение из истории диалога"""
+    """Сообщение из диалога (role, content)."""
     role: str  # "user" или "assistant"
     content: str
 
 
 class QueryRequest(BaseModel):
-    """Запрос для генерации ответа"""
+    """Запрос к RAG (query, context, personal_data)."""
     query: str
     context: Optional[List[ContextMessage]] = None
     personal_data: Optional[dict] = None
 
 
 class QueryResponse(BaseModel):
-    """Ответ RAG системы"""
+    """Ответ RAG (response, sources)."""
     response: str
     sources: List[SourceReference]
 
@@ -46,18 +46,17 @@ async def generate_answer(
     x_user_id: Optional[str] = Header(None),
     x_role: Optional[str] = Header(None),
 ):
-    """
-    Генерирует ответ на вопрос пользователя на основе документов.
+    """Генерирует ответ LLM на вопрос с контекстом диалога (параметры: request, x_user_id, x_role; возвращает: QueryResponse).
     
     Pipeline:
-    1. Поиск релевантных чанков в Chroma
-    2. Формирование контекста из истории диалога + найденные чанки
-    3. Запрос к LLM
+    1. Поиск чанков в Chroma (top_k=3)
+    2. Формирование контекста из истории диалога
+    3. Запрос к LLM с полным промптом
     4. Возврат ответа + источники
     """
     
     try:
-        # Поиск релевантных чанков (top_k=3 для скорости)
+        # Поиск релевантных чанков (top_k=3)
         search_results = search(request.query, top_k=3)
         
         # Подготовка чанков и источников
@@ -75,14 +74,15 @@ async def generate_answer(
             )
             sources.append(source)
         
-        # Формирование полного промпта
+        # Формирование контекста диалога
         dialog_context = ""
         if request.context:
             dialog_context = "История диалога:\n"
-            for msg in request.context[-5:]:
+            for msg in request.context[-5:]:  # Последние 5 сообщений
                 role = "Пользователь" if msg.role == "user" else "Ассистент"
                 dialog_context += f"{role}: {msg.content}\n"
         
+        # Полный промпт с контекстом и чанками
         full_prompt = f"""{dialog_context}
 Новый вопрос: {request.query}
 
@@ -91,13 +91,13 @@ async def generate_answer(
 
 Ответь кратко и по делу."""
         
-        # Генерация ответа
+        # Генерация ответа LLM
         try:
             bot_response = answer(full_prompt)
         except Exception as e:
             bot_response = f"Ошибка при обработке: {str(e)}"
         
-        # Возврат с явным charset=utf-8
+        # Возврат JSON с явным charset=utf-8
         response_data = QueryResponse(
             response=bot_response,
             sources=sources
@@ -117,7 +117,7 @@ async def generate_answer(
 
 @router.get("/health")
 async def health_check():
-    """Проверка доступности RAG сервиса."""
+    """Проверка доступности RAG сервиса (параметры: нет; возвращает: status и service info)."""
     return {
         "status": "OK",
         "service": "RAG API"

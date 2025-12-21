@@ -14,24 +14,23 @@ router = APIRouter(prefix="/rag", tags=["RAG Sync"])
 
 
 def check_role_allowed(x_role: Optional[str]):
-    """Простая проверка роли на уровне RAG: разрешены 'hr' и 'admin'"""
+    """Проверяет роль (только 'hr' и 'admin'); параметры: x_role; возвращает: None или HTTPException."""
     if not x_role or x_role.lower() not in ("hr", "admin"):
         raise HTTPException(status_code=403, detail="Role not allowed to perform sync")
 
-# PYDANTIC МОДЕЛИ 
-
+# Pydantic модели синхронизации
 
 class SyncDocumentRequest(BaseModel):
-    """Запрос на синхронизацию документа с Backend"""
+    """Запрос на синхронизацию (document_id, version_id, title, content, file_path)."""
     document_id: int  # ID документа в Backend
     version_id: int  # ID версии документа в Backend
-    title: str  # название документа
-    content: Optional[str] = None  # текстовое содержимое
-    file_path: Optional[str] = None  # путь к файлу
+    title: str  # Название документа
+    content: Optional[str] = None  # Текстовое содержимое
+    file_path: Optional[str] = None  # Путь к файлу
 
 
 class SyncDocumentResponse(BaseModel):
-    """Ответ при синхронизации документа"""
+    """Результат синхронизации (success, document_id, version_id, chunks_created, message)."""
     success: bool
     document_id: int
     version_id: int
@@ -39,7 +38,7 @@ class SyncDocumentResponse(BaseModel):
     message: str
 
 
-# ENDPOINTS
+# Эндпоинты синхронизации
 
 
 @router.post("/sync/document", response_model=SyncDocumentResponse)
@@ -47,6 +46,7 @@ async def sync_document(
     request: SyncDocumentRequest,
     x_role: Optional[str] = Header(None)
 ):
+    """Синхронизирует документ версию в Chroma (параметры: request, x_role; возвращает: SyncDocumentResponse)."""
     check_role_allowed(x_role)
 
     try:
@@ -57,7 +57,7 @@ async def sync_document(
             content=request.content,
             file_path=request.file_path
         )
-        # Report result back to Backend (optional). Backend must expose internal endpoint.
+        # Отправляем результат обратно в Backend (опционально)
         try:
             backend_url = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip('/')
             callback_secret = os.getenv("RAG_CALLBACK_SECRET")
@@ -92,24 +92,11 @@ async def delete_document_version(
     x_user_id: Optional[str] = Header(None),
     x_role: Optional[str] = Header(None),
 ):
+    """Удаляет версию документа из Chroma (параметры: document_id, version_id, x_role; возвращает: результат удаления)."""
     check_role_allowed(x_role)
-    """
-    Удаление версии документа из RAG системы.
-    
-    Используется когда документ помечается как архивированный в Backend.
-    Удаляются все чанки этой версии из ChromaDB.
-    
-    Args:
-        document_id: ID документа в Backend
-        version_id: ID версии документа в Backend
-    
-    Returns:
-        Информация об удалении
-    """
     
     try:
-        # ===== УДАЛЕНИЕ ИЗ CHROMADB =====
-        # Ищем все чанки этой версии документа
+        # Ищем все чанки этой версии в Chroma
         results = collection.get(
             where={
                 "$and": [
@@ -126,7 +113,7 @@ async def delete_document_version(
         else:
             deleted_count = 0
         
-        # ===== ВОЗВРАТ РЕЗУЛЬТАТА =====
+        # Возвращаем результат
         return {
             "success": True,
             "document_id": document_id,
@@ -149,29 +136,16 @@ async def activate_document_version(
     x_user_id: Optional[str] = Header(None),
     x_role: Optional[str] = Header(None),
 ):
+    """Активирует версию документа, деактивирует остальные (параметры: document_id, version_id, x_role; возвращает: результат активации)."""
     check_role_allowed(x_role)
-    """
-    Активация определённой версии документа.
-    Деактивирует все остальные версии этого документа.
-    
-    Используется когда в Backend устанавливается новая активная версия.
-    
-    Args:
-        document_id: ID документа в Backend
-        version_id: ID версии для активации (по умолчанию последняя)
-    
-    Returns:
-        Информация об активации
-    """
     
     try:
-        # ===== ДЕАКТИВАЦИЯ СТАРЫХ ВЕРСИЙ =====
-        # Находим все чанки этого документа
+        # Деактивируем все версии этого документа
         all_versions = collection.get(
             where={"document_id": {"$eq": document_id}}
         )
         
-        # Обновляем статус на неактивный для всех
+        # Устанавливаем статус "archived" для всех
         if all_versions["ids"]:
             collection.update(
                 ids=all_versions["ids"],
@@ -181,8 +155,7 @@ async def activate_document_version(
                 ]
             )
         
-        # ===== АКТИВАЦИЯ НОВОЙ ВЕРСИИ =====
-        # Находим чанки нужной версии
+        # Активируем нужную версию
         target_version = collection.get(
             where={
                 "$and": [
@@ -192,7 +165,7 @@ async def activate_document_version(
             }
         )
         
-        # Обновляем статус на активный
+        # Устанавливаем статус "active"
         if target_version["ids"]:
             collection.update(
                 ids=target_version["ids"],
@@ -205,7 +178,7 @@ async def activate_document_version(
         else:
             activated_count = 0
         
-        # ===== ВОЗВРАТ РЕЗУЛЬТАТА =====
+        # Возвращаем результат
         return {
             "success": True,
             "document_id": document_id,

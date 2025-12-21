@@ -1,10 +1,10 @@
 from openai import OpenAI
 
-# Подключение к Ollama (локальный LLM)
+# Подключение к Ollama (локальный LLM на localhost:11434)
 client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 MODEL = "gemma2:2b"
 
-# Системное сообщение для LLM
+# Системное сообщение: запретить утечку персональных данных
 SYSTEM_MESSAGE = (
     "Вы — внутренний ассистент HR. Никогда не разглашайте и не добавляйте персональные данные пользователя, "
     "если это не строго необходимо. Не запрашивайте PII. Используйте только переданные вам вырезанные фрагменты "
@@ -12,18 +12,8 @@ SYSTEM_MESSAGE = (
 )
 
 def answer(prompt: str, chunks: list[str] = None, sources: list[str] = None) -> str:
-    """
-    Генерирует ответ LLM на основе готового промпта.
-    Prompts уже сформированы в query.py с контекстом диалога и чанками.
-    
-    Args:
-        prompt: готовый промпт с вопросом и контекстом из документов
-        chunks: не используется (для совместимости)
-        sources: не используется (для совместимости)
-    
-    Returns:
-        Ответ модели (UTF-8 строка)
-    """
+    """Генерирует ответ LLM (параметры: prompt, chunks, sources; возвращает: str ответ)."""
+    # prompt уже содержит контекст диалога и документы (сформирован в query.py)
     try:
         response = client.chat.completions.create(
             model=MODEL,
@@ -31,7 +21,7 @@ def answer(prompt: str, chunks: list[str] = None, sources: list[str] = None) -> 
                 {"role": "system", "content": SYSTEM_MESSAGE},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
+            temperature=0.3,  # Низкая температура = детерминированный ответ
             max_tokens=300
         )
         return ensure_utf8(response.choices[0].message.content.strip())
@@ -40,7 +30,7 @@ def answer(prompt: str, chunks: list[str] = None, sources: list[str] = None) -> 
 
 
 def ensure_utf8(text: str) -> str:
-    """Нормализует UTF-8 кодировку (критично для Windows и кириллицы)."""
+    """Нормализует UTF-8 (заменяет невалидные символы; параметры: text; возвращает: str)."""
     if isinstance(text, str):
         return text.encode('utf-8', errors='replace').decode('utf-8', errors='replace')
     return text
