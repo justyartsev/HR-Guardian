@@ -1,0 +1,31 @@
+# Основные веб-фреймворки
+fastapi>=0.104.0          # FastAPI сервер
+uvicorn>=0.24.0           # ASGI сервер для запуска FastAPI
+
+# Работа с базой данных
+SQLAlchemy>=2.0.0         # ORM для PostgreSQL
+psycopg2-binary>=2.9.0    # Драйвер PostgreSQL
+
+# Планировщик задач
+APScheduler>=3.10.0       # Для автоматической активации версий документов
+
+# Основные библиотеки для RAG
+sentence-transformers>=2.2.0  # Эмбеддинги (multilingual-e5-base)
+numpy>=1.21.0                 # Массивы и математика
+scikit-learn>=1.0.0           # cosine_similarity
+chromadb>=0.4.0               # Векторная БД (локальная, persistent)
+
+# Работа с документами
+python-docx>=0.8.11           # для docx (импортируется как docx)
+PyMuPDF>=1.21.0               # для fitz (PDF)
+markdown>=3.4.0               # для markdown
+
+# Обработка изображений и OCR
+Pillow>=9.0.0                 # для PIL
+pytesseract>=0.3.10           # для pytesseract
+
+# Лингвистика (русский язык)
+razdel>=0.5.0                 # для razdel (разбиение на предложения)
+
+# Клиент для Ollama (OpenAI-совместимый API)
+openai>=1.0.0                 # для работы с Ollama
