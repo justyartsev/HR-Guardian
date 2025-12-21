@@ -13,10 +13,6 @@ class Settings(BaseSettings):
     # Дополнительные переменные, используемые в проекте
     RAG_URL: str = os.getenv("RAG_URL", "http://localhost:8001")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    # Безопасность персональных данных: по умолчанию не отправлять PII в RAG
-    SEND_PERSONAL_DATA: bool = os.getenv("SEND_PERSONAL_DATA", "false").lower() in ("1", "true", "yes")
-    # Список разрешённых полей персональных данных, разделённых запятыми
-    ALLOWED_PERSONAL_FIELDS: str = os.getenv("ALLOWED_PERSONAL_FIELDS", "position,department")
 
     class Config:
         env_file = ".env"

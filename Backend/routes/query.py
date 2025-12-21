@@ -7,22 +7,6 @@ import requests
 from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel
-from core.config import settings
-
-
-def sanitize_personal_data(personal: Optional[dict]) -> Optional[dict]:
-    """Оставляет в personal только поля из белого списка настроек.
-    По умолчанию персональные данные не отправляются (SEND_PERSONAL_DATA=False).
-    """
-    if not personal:
-        return None
-    if not settings.SEND_PERSONAL_DATA:
-        return None
-    allowed = [f.strip() for f in settings.ALLOWED_PERSONAL_FIELDS.split(',') if f.strip()]
-    if not allowed:
-        return None
-    return {k: v for k, v in personal.items() if k in allowed}
-
 router = APIRouter(prefix="/query", tags=["Query"])
 
 # ====================== КОНФИГУРАЦИЯ ======================
@@ -107,8 +91,7 @@ async def process_query(
     # Отправить запрос в RAG
     rag_request = {
         "query": request.query,
-        "context": context_history,
-        "personal_data": sanitize_personal_data(request.personal_data.dict() if request.personal_data else None)
+        "context": context_history
     }
     
     try:
