@@ -107,7 +107,10 @@ export function MainPage({
   inputValue,
   messages,
   chats,
+  currentUser,
   activeChatId,
+  onLogout,
+  isLoading,
   username,
   onInputChange,
   onSendMessage,
@@ -128,7 +131,7 @@ export function MainPage({
         chats={chats}
         activeChatId={activeChatId}
         onNewChat={onNewChat}
-        username={username}
+        username={currentUser?.username || "Гость"}
         onChatSelect={onChatSelect}
         onRenameChat={onRenameChat}    
         onDeleteChat={onDeleteChat} 
