@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import bcrypt
-from datetime import datetime
+from datetime import datetime, timezone
 from core.jwt import create_token
 from core.security import verify_password
 from models.user import User
@@ -25,7 +25,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         email=user.email,
         hashed_password=hashed_password.decode('utf-8'),
         role=user.role,
-        created_at=datetime.now()
+        created_at=datetime.now(timezone.utc)
     )
 
     db.add(new_user)

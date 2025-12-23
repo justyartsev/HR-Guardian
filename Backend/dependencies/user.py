@@ -17,9 +17,15 @@ def get_current_user(
         user_id: str = payload.get("sub")
 
         if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
 
-        user = db.query(User).get(int(user_id))
+        # Проверяем что user_id - это валидное число
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid token: user ID format")
+
+        user = db.query(User).get(user_id_int)
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
 
@@ -27,6 +33,10 @@ def get_current_user(
         
     except JWTError:
         raise HTTPException(status_code=401, detail="Token expired or invalid")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
 
 
 def require_role(*allowed_roles: str):
