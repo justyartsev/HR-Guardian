@@ -18,13 +18,11 @@ sys.path.append(str(Path(__file__).parent.parent))
 try:
     from routes import query_router, sync_router
 except ImportError as e:
-    print(f"Ошибка импорта routes: {e}")
     raise
 
 try:
     from modules.db_utility import init_vectordb
 except ImportError as e:
-    print(f"Ошибка импорта модулей: {e}")
     raise
 
 # Приложение FastAPI
@@ -40,30 +38,11 @@ app = FastAPI(
 @app.exception_handler(RequestValidationError)
 async def validation_handler(request: Request, exc: RequestValidationError):
     """Логирует ошибки валидации (обработка исключений)."""
-    print(f"[RAG VALIDATION ERROR] {request.method} {request.url}")
-    print(f"[RAG VALIDATION ERROR] Details: {exc.errors()}")
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors()},
     )
-
-# Middleware логирования запросов
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Логирует HTTP запросы/ответы (параметры: request, call_next; возвращает: response)."""
-    try:
-        print(f"[RAG] {request.method} {request.url.path}")
-    except Exception:
-        pass
     
-    response = await call_next(request)
-    
-    try:
-        print(f"[RAG] Response {response.status_code} {request.method} {request.url.path}")
-    except Exception:
-        pass
-    
-    return response
 
 # Инициализация Chroma при стартапе
 @app.on_event("startup")
@@ -79,11 +58,9 @@ async def startup():
         set_executor(single_thread_executor)
         print("[RAG] Single-thread executor initialized for LLM")
         
-        # Запускаем background worker для обработки очереди
         llm_queue = get_llm_queue()
         asyncio.create_task(llm_queue.process_queue(answer))
         print("[RAG] LLM Queue worker started")
-        
     except Exception as e:
         print(f"[RAG] Warning: Startup init failed: {e}")
 
@@ -116,16 +93,3 @@ async def health_check():
         "vectordb": "connected"  # в реальности нужна проверка подключения
     }
 
-
-# ====================== ЗАПУСК ======================
-# Для запуска используйте:
-# uvicorn app.main:app --reload --port 8001
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8001,
-        reload=True
-    )

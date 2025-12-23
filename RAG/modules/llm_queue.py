@@ -144,8 +144,6 @@ class LLMQueue:
                 logger.info(f"Processing request {request.id}")
                 
                 try:
-                    # ✅ Собираем полный промпт с контекстом и personal_data перед отправкой в LLM
-                    # (поиск чанков происходит в query.py если нужно)
                     full_prompt = build_prompt(
                         query=request.prompt,
                         context=request.context,

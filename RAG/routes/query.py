@@ -30,8 +30,8 @@ class QueryRequest(BaseModel):
     """Запрос к RAG для асинхронной обработки (query, context, personal_data, service_token)."""
     query: str
     context: Optional[List[ContextMessage]] = None
-    personal_data: Optional[PersonalData] = None  # ✅ Персональные данные пользователя
-    service_token: str  # ✅ Обязательный токен для Backend service-to-service auth
+    personal_data: Optional[PersonalData] = None  # Персональные данные пользователя
+    service_token: str  # Обязательный токен для Backend service-to-service auth
 
 
 # Эндпоинты
@@ -39,8 +39,6 @@ class QueryRequest(BaseModel):
 @router.post("/answer/queue")
 async def queue_answer(request: QueryRequest):
     """Добавить запрос в очередь для асинхронной обработки LLM (параметры: request с service_token; возвращает: request_id).
-    
-    ✅ Единственный эндпоинт для LLM запросов - всё асинхронно через очередь.
     Pipeline:
     1. Валидация service_token в JSON
     2. Добавление запроса в LLMQueue (maxsize=100) с контекстом и personal_data
@@ -50,14 +48,14 @@ async def queue_answer(request: QueryRequest):
     - POST /rag/answer/queue: добавить запрос
     - GET /rag/answer/queue/{request_id}: получить результат
     """
-    # ✅ Валидируем service token - обязательный для всех запросов от Backend
+    # Валидируем service token - обязательный для всех запросов от Backend
     expected_token = os.getenv("RAG_SERVICE_TOKEN")
     if not expected_token or request.service_token != expected_token:
         raise HTTPException(status_code=403, detail="Invalid service token")
     
     try:
         llm_queue = get_llm_queue()
-        # ✅ Передаём полный контекст: query + context + personal_data
+        # Передаём полный контекст: query + context + personal_data
         request_id = await llm_queue.add_request(request.query, context=request.context, personal_data=request.personal_data)
         return {
             "success": True,

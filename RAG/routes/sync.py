@@ -18,12 +18,12 @@ class SyncStatus(str, Enum):
 
 router = APIRouter(prefix="/rag", tags=["RAG Sync"])
 
-# ✅ Кэш документов для быстрого доступа (document_id -> file_path и метаданные)
+# Кэш документов для быстрого доступа (document_id -> file_path и метаданные)
 _document_cache = {}
 
 
 def validate_service_token(service_token: str):
-    """✅ Валидирует service_token для Backend service-to-service auth.
+    """Валидирует service_token для Backend service-to-service auth.
     Параметры: service_token; возвращает: None или HTTPException 403."""
     expected_token = os.getenv("RAG_SERVICE_TOKEN")
     if not expected_token or service_token != expected_token:
@@ -38,7 +38,7 @@ class SyncDocumentRequest(BaseModel):
     title: str  # Название документа
     content: Optional[str] = None  # Текстовое содержимое
     file_path: Optional[str] = None  # Путь к файлу
-    service_token: str  # ✅ Обязательный токен для Backend service-to-service auth (JSON)
+    service_token: str  # Обязательный токен для Backend service-to-service auth (JSON)
 
 
 class SyncDocumentResponse(BaseModel):
@@ -59,9 +59,8 @@ async def sync_document(
 ):
     """Синхронизирует документ версию в Chroma (параметры: request с service_token в JSON; возвращает: SyncDocumentResponse).
     
-    ✅ Валидация токена происходит в JSON (service_token), а не в Headers.
     """
-    # ✅ Валидируем service token - обязательный для всех запросов от Backend
+    #  Валидируем service token - обязательный для всех запросов от Backend
     validate_service_token(request.service_token)
 
     try:
@@ -73,7 +72,7 @@ async def sync_document(
             file_path=request.file_path
         )
         
-        # ✅ Кэшируем file_path и метаданные для доступа через Backend download эндпоинт
+        #  Кэшируем file_path и метаданные для доступа через Backend download эндпоинт
         if request.file_path:
             _document_cache[request.document_id] = {
                 "title": request.title,
@@ -114,9 +113,7 @@ async def get_document_info(
     document_id: int
 ):
     """Получить информацию о документе из кэша RAG (параметры: document_id; возвращает: file_path и метаданные).
-    
-    ✅ Используется для доступа к файлу через Backend эндпоинт /documents/{doc_id}/download
-    для фильтрации по ключевым словам и расширенного поиска.
+
     """
     if document_id in _document_cache:
         return _document_cache[document_id]
@@ -134,8 +131,7 @@ async def delete_document_version(
     service_token: str 
 ):
     """Удаляет версию документа из Chroma (параметры: document_id, version_id; возвращает: результат удаления).
-    
-    ✅ Вызывается Backend callback после sync_result, поэтому токен в query параметре.
+
     """
     validate_service_token(service_token)
     
