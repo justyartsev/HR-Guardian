@@ -9,6 +9,15 @@ from modules.db_utility import sync_document_version, collection
 import requests
 from modules.reader import DocumentReader
 from modules.chunker import semantic_chunking_vectors
+from enum import Enum
+
+# Статусы синхронизации (совпадают с Backend)
+class SyncStatus(str, Enum):
+    PENDING = "pending"
+    SYNCING = "syncing"
+    SYNCED = "synced"
+    ARCHIVED = "archived"
+    ERROR = "error"
 
 router = APIRouter(prefix="/rag", tags=["RAG Sync"])
 
@@ -21,12 +30,13 @@ def check_role_allowed(x_role: Optional[str]):
 # Pydantic модели синхронизации
 
 class SyncDocumentRequest(BaseModel):
-    """Запрос на синхронизацию (document_id, version_id, title, content, file_path)."""
+    """Запрос на синхронизацию (document_id, version_id, title, content, file_path, service_token)."""
     document_id: int  # ID документа в Backend
     version_id: int  # ID версии документа в Backend
     title: str  # Название документа
     content: Optional[str] = None  # Текстовое содержимое
     file_path: Optional[str] = None  # Путь к файлу
+    service_token: Optional[str] = None  # Токен для Backend service-to-service auth
 
 
 class SyncDocumentResponse(BaseModel):
@@ -48,6 +58,12 @@ async def sync_document(
 ):
     """Синхронизирует документ версию в Chroma (параметры: request, x_role; возвращает: SyncDocumentResponse)."""
     check_role_allowed(x_role)
+    
+    # Проверяем service token если Backend отправил
+    if request.service_token:
+        expected_token = os.getenv("RAG_SERVICE_TOKEN")
+        if not expected_token or request.service_token != expected_token:
+            raise HTTPException(status_code=403, detail="Invalid service token")
 
     try:
         chunks_created = sync_document_version(
@@ -60,16 +76,15 @@ async def sync_document(
         # Отправляем результат обратно в Backend (опционально)
         try:
             backend_url = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip('/')
-            callback_secret = os.getenv("RAG_CALLBACK_SECRET")
+            callback_token = os.getenv("RAG_CALLBACK_SECRET")
             cb_url = f"{backend_url}/internal/rag/sync_result"
-            headers = {}
-            if callback_secret:
-                headers['X-Internal-Token'] = callback_secret
             resp = requests.post(cb_url, json={
                 "document_id": request.document_id,
                 "version_id": request.version_id,
-                "chunks_created": chunks_created
-            }, headers=headers, timeout=10)
+                "chunks_created": chunks_created,
+                "callback_token": callback_token,
+                "sync_status": SyncStatus.SYNCED.value
+            }, timeout=10)
             if resp.status_code != 200:
                 print(f"[RAG] Warning: backend callback returned {resp.status_code}: {resp.text}")
         except Exception as e:
@@ -150,7 +165,7 @@ async def activate_document_version(
             collection.update(
                 ids=all_versions["ids"],
                 metadatas=[
-                    {**metadata, "status": "archived"}
+                    {**metadata, "status": SyncStatus.ARCHIVED.value}
                     for metadata in all_versions["metadatas"]
                 ]
             )
@@ -165,12 +180,12 @@ async def activate_document_version(
             }
         )
         
-        # Устанавливаем статус "active"
+        # Устанавливаем статус "synced"
         if target_version["ids"]:
             collection.update(
                 ids=target_version["ids"],
                 metadatas=[
-                    {**metadata, "status": "active"}
+                    {**metadata, "status": SyncStatus.SYNCED.value}
                     for metadata in target_version["metadatas"]
                 ]
             )

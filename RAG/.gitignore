@@ -1,0 +1,2 @@
+# Исключаем Backend папку из RAG ветки
+/Backend

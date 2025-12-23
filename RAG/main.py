@@ -6,6 +6,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from datetime import datetime
 import io
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
 # Явная конфигурация UTF-8 для Windows
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -65,12 +67,25 @@ async def log_requests(request: Request, call_next):
 
 # Инициализация Chroma при стартапе
 @app.on_event("startup")
-def startup():
-    """Инициализирует Chroma PersistentClient (параметры: нет; возвращает: None)."""
+async def startup():
+    """Инициализирует Chroma PersistentClient и запускает LLM queue worker (параметры: нет; возвращает: None)."""
     try:
         init_vectordb()
+        # Создаем single-thread executor для ограничения параллелизма ollama (макс 1 запрос)
+        from modules.llm_queue import set_executor, get_llm_queue
+        from modules.LLM import answer
+        
+        single_thread_executor = ThreadPoolExecutor(max_workers=1)
+        set_executor(single_thread_executor)
+        print("[RAG] Single-thread executor initialized for LLM")
+        
+        # Запускаем background worker для обработки очереди
+        llm_queue = get_llm_queue()
+        asyncio.create_task(llm_queue.process_queue(answer))
+        print("[RAG] LLM Queue worker started")
+        
     except Exception as e:
-        print(f"[RAG] Warning: Vectordb init failed: {e}")
+        print(f"[RAG] Warning: Startup init failed: {e}")
 
 # Регистрация routes
 app.include_router(query_router)

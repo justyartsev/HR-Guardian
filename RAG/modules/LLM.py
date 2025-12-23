@@ -14,19 +14,25 @@ SYSTEM_MESSAGE = (
 def answer(prompt: str, chunks: list[str] = None, sources: list[str] = None) -> str:
     """Генерирует ответ LLM (параметры: prompt, chunks, sources; возвращает: str ответ)."""
     # prompt уже содержит контекст диалога и документы (сформирован в query.py)
-    try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_MESSAGE},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,  # Низкая температура = детерминированный ответ
-            max_tokens=300
-        )
-        return ensure_utf8(response.choices[0].message.content.strip())
-    except Exception as e:
-        return f"Ошибка при обработке: {str(e)}"
+    max_retries = 1
+    for attempt in range(max_retries + 1):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_MESSAGE},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,  # Низкая температура = детерминированный ответ
+                max_tokens=300,
+                timeout=30  # Защита от зависания ollama
+            )
+            return ensure_utf8(response.choices[0].message.content.strip())
+        except Exception as e:
+            if attempt < max_retries:
+                print(f"[RAG LLM] Retry attempt {attempt + 1}/{max_retries}: {str(e)}")
+            else:
+                return f"Ошибка при обработке: {str(e)}"
 
 
 def ensure_utf8(text: str) -> str:

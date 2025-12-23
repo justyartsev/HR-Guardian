@@ -5,7 +5,12 @@ from pydantic import BaseModel
 from typing import Optional, List
 from modules.db_utility import search
 from modules.LLM import answer
+from modules.llm_queue import get_llm_queue, init_llm_queue
 import json
+import os
+
+# Инициализируем очередь при импорте
+init_llm_queue()
 
 router = APIRouter(prefix="/rag", tags=["RAG Query"])
 
@@ -26,16 +31,18 @@ class ContextMessage(BaseModel):
 
 
 class QueryRequest(BaseModel):
-    """Запрос к RAG (query, context, personal_data)."""
+    """Запрос к RAG (query, context, personal_data, service_token)."""
     query: str
     context: Optional[List[ContextMessage]] = None
     personal_data: Optional[dict] = None
+    service_token: Optional[str] = None  # Токен для Backend service-to-service auth
 
 
 class QueryResponse(BaseModel):
-    """Ответ RAG (response, sources)."""
+    """Ответ RAG (response, sources, request_id для очереди)."""
     response: str
     sources: List[SourceReference]
+    request_id: Optional[str] = None  # ID запроса если обработан очередью
 
 
 # Эндпоинты
@@ -49,11 +56,18 @@ async def generate_answer(
     """Генерирует ответ LLM на вопрос с контекстом диалога (параметры: request, x_user_id, x_role; возвращает: QueryResponse).
     
     Pipeline:
-    1. Поиск чанков в Chroma (top_k=3)
-    2. Формирование контекста из истории диалога
-    3. Запрос к LLM с полным промптом
-    4. Возврат ответа + источники
+    1. Проверка токена для Backend service-to-service auth
+    2. Поиск чанков в Chroma (top_k=3)
+    3. Формирование контекста из истории диалога
+    4. Запрос к LLM с полным промптом (макс 2000 символов контекста)
+    5. Возврат ответа + источники
     """
+    
+    # Проверяем service token если Backend отправил
+    if request.service_token:
+        expected_token = os.getenv("RAG_SERVICE_TOKEN")
+        if not expected_token or request.service_token != expected_token:
+            raise HTTPException(status_code=403, detail="Invalid service token")
     
     try:
         # Поиск релевантных чанков (top_k=3)
@@ -82,12 +96,15 @@ async def generate_answer(
                 role = "Пользователь" if msg.role == "user" else "Ассистент"
                 dialog_context += f"{role}: {msg.content}\n"
         
-        # Полный промпт с контекстом и чанками
+        # Полный промпт с контекстом и чанками, ограничиваем до 2000 символов
+        chunks_text = chr(10).join(chunks) if chunks else "Нет информации"
+        chunks_text = chunks_text[:2000]  # Ограничиваем контекст (макс ~500 токенов для Ollama)
+        
         full_prompt = f"""{dialog_context}
 Новый вопрос: {request.query}
 
 Контекст из документов:
-{chr(10).join(chunks) if chunks else "Нет информации"}
+{chunks_text}
 
 Ответь кратко и по делу."""
         
@@ -108,11 +125,47 @@ async def generate_answer(
             media_type="application/json; charset=utf-8"
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"RAG ошибка: {str(e)}"
         )
+
+
+@router.post("/answer/queue")
+async def queue_answer(request: QueryRequest):
+    """Добавить запрос в очередь для асинхронной обработки (параметры: request; возвращает: request_id)."""
+    try:
+        llm_queue = get_llm_queue()
+        request_id = await llm_queue.add_request(request.query)
+        return {
+            "success": True,
+            "request_id": request_id,
+            "message": "Запрос добавлен в очередь"
+        }
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/answer/queue/{request_id}")
+async def get_queued_result(request_id: str):
+    """Получить результат обработки запроса из очереди (параметры: request_id; возвращает: статус и результат)."""
+    try:
+        llm_queue = get_llm_queue()
+        result = await llm_queue.get_result(request_id)
+        
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Request {request_id} not found or expired")
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/health")
