@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 import crud.dialog as crud_dialog
@@ -7,10 +7,11 @@ import requests
 from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel
-router = APIRouter(prefix="/query", tags=["Query"])
+from core.config import settings
+from models.user import User as UserModel
+from dependencies.user import get_current_user
 
-# ====================== КОНФИГУРАЦИЯ ======================
-RAG_BASE_URL = "http://localhost:8001"  # URL RAG сервиса
+router = APIRouter(prefix="/query", tags=["Query"])
 
 
 # ====================== PYDANTIC МОДЕЛИ ======================
@@ -38,32 +39,23 @@ class QueryResponse(BaseModel):
 
 # ====================== ENDPOINTS ======================
 
-@router.post("/", response_model=QueryResponse)
+@router.post("", response_model=QueryResponse)
 async def process_query(
     request: QueryRequest,
-    x_user_id: Optional[str] = Header(None),
-    x_role: Optional[str] = Header(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
     """
     Обработка запроса пользователя с контекстом диалога.
     
     Pipeline:
-    1. Получить/создать диалог
+    1. Получить/создать диалог (для текущего пользователя)
     2. Получить историю сообщений (контекст)
     3. Отправить в RAG с контекстом
     4. Сохранить оба сообщения (user + bot)
     5. Вернуть ответ
     """
-    
-    # Проверка аутентификации
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="X-User-ID header required")
-    
-    try:
-        user_id = int(x_user_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid User-ID format")
+    user_id = current_user.id
     
     # Получить или создать диалог
     if request.dialog_id:
@@ -88,19 +80,20 @@ async def process_query(
             "content": msg.text
         })
     
-    # Отправить запрос в RAG
+    # Отправить запрос в RAG с историей диалога
     rag_request = {
         "query": request.query,
         "context": context_history
     }
     
     try:
+        # RAG ищет документы, формирует контекст и генерирует ответ через LLM
         rag_response = requests.post(
-            f"{RAG_BASE_URL}/rag/answer",
+            f"{settings.RAG_URL}/rag/answer",
             json=rag_request,
             headers={
                 "X-User-ID": str(user_id),
-                "X-Role": x_role or "employee"
+                "X-Role": current_user.role.name  # role из JWT токена (hr, admin, employee)
             },
             timeout=60
         )
@@ -148,25 +141,22 @@ async def process_query(
 @router.get("/{dialog_id}/context")
 async def get_dialog_context(
     dialog_id: int,
-    x_user_id: Optional[str] = Header(None),
     limit: int = 10,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user)
 ):
     """
     Получить контекст диалога (последние N сообщений) для подготовки к RAG запросу.
     Используется для отладки и проверки истории.
     """
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="X-User-ID header required")
-    
-    try:
-        user_id = int(x_user_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid User-ID format")
     
     dialog = crud_dialog.get_dialog(db, dialog_id)
-    if not dialog or dialog.user_id != user_id:
-        raise HTTPException(status_code=404, detail="Dialog not found or access denied")
+    if not dialog:
+        raise HTTPException(status_code=404, detail="Dialog not found")
+    
+    # Row-level security: проверяем что диалог принадлежит пользователю
+    if dialog.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied: this dialog belongs to another user")
     
     messages = crud_dialog.get_messages(db, dialog_id, limit)
     
