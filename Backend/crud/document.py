@@ -6,42 +6,22 @@ from schemas.document import (
     DocumentVersionCreate
 )
 from datetime import datetime
+import os
+import shutil
 
-
-def create_document(db: Session, data: DocumentCreate):
-
-    doc = Document(
-        title=data.title,
-        effective_from=data.effective_from,
-    )
-    db.add(doc)
-    db.flush()  
-
- 
-    v = DocumentVersion(
-        document_id=doc.id,
-        format=data.initial_version.format,
-        content=data.initial_version.content,
-        file_path=data.initial_version.file_path,
-    )
-    db.add(v)
-    db.flush()
-
-    doc.current_version_id = v.id
-
-    db.commit()
-    db.refresh(doc)
-    return doc
-
+# Поиск документа по названию и формату (для версионирования)
+def find_document_by_title_and_format(db: Session, title: str, format):
+    docs = db.query(Document).filter(Document.title == title).all()
+    for doc in docs:
+        for v in doc.versions:
+            # Сравниваем значения format (могут быть enum или строка)
+            if str(v.format) == str(format):
+                return doc
+    return None
 
 
 def get_document(db: Session, doc_id: int):
     return db.query(Document).filter(Document.id == doc_id).first()
-
-
-
-def list_documents(db: Session):
-    return db.query(Document).all()
 
 
 
@@ -63,15 +43,31 @@ def update_document(db: Session, doc_id: int, data: DocumentUpdate):
 
 
 def delete_document(db: Session, doc_id: int):
-    doc = db.query(Document).filter(Document.id == doc_id).first()
-    if not doc:
+    try:
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+
+        # Удаляем файлы с диска
+        doc_folder = f"./files/documents/{doc_id}"
+        if os.path.exists(doc_folder):
+            shutil.rmtree(doc_folder)  # Рекурсивное удаление папки со всеми версиями
+
+        # Сначала очищаем current_version_id чтобы избежать constraint violation
+        doc.current_version_id = None
+        db.flush()
+
+        # Удаляем версии из БД
+        db.query(DocumentVersion).filter(DocumentVersion.document_id == doc_id).delete()
+
+        # Удаляем сам документ
+        db.delete(doc)
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        print(f"Error deleting document: {e}")
         return False
-
-    db.query(DocumentVersion).filter(DocumentVersion.document_id == doc_id).delete()
-
-    db.delete(doc)
-    db.commit()
-    return True
 
 
 
@@ -122,3 +118,25 @@ def update_version_sync(db: Session, version_id: int, chunks_created: int):
     db.commit()
     db.refresh(v)
     return v
+
+
+def list_active_documents(db: Session):
+    """
+    Получить все документы, которые видны пользователям:
+    - Имеют установленную текущую версию
+    - Дата effective_from либо не установлена, либо уже наступила
+    """
+    now = datetime.utcnow()
+    return db.query(Document).filter(
+        Document.current_version_id.isnot(None),
+        ((Document.effective_from.isnot(None)) & (Document.effective_from <= now)) |
+        (Document.effective_from.is_(None))
+    ).all()
+
+
+def get_document_version(db: Session, doc_id: int, version_id: int):
+    """Получить конкретную версию документа"""
+    return db.query(DocumentVersion).filter(
+        DocumentVersion.document_id == doc_id,
+        DocumentVersion.id == version_id
+    ).first()
