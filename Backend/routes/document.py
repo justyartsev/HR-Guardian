@@ -12,9 +12,9 @@ from schemas.document import (
     DocumentCreate,
     DocumentUpdate,
     DocumentVersionCreate,
-    DocumentResponse,
-    DocumentFormat
+    DocumentResponse
 )
+from core.enums import DocumentFormat
 from typing import List, Optional
 from core.config import settings
 

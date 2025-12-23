@@ -1,17 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, List
-from enum import Enum
-
-
-class DocumentFormat(str, Enum):
-    pdf = "pdf"
-    docx = "docx"
-    md = "md"
-    txt = "txt"
-    html = "html"
-    wiki = "wiki"
-    faq = "faq"
+from core.enums import DocumentFormat, SyncStatus
 
 
 # ---------------------------
@@ -30,6 +20,7 @@ class DocumentVersionCreate(DocumentVersionBase):
 
 class DocumentVersionResponse(DocumentVersionBase):
     id: int
+    sync_status: SyncStatus  # ✅ Добавлено: статус синхронизации с RAG
     created_at: datetime
 
     class Config:

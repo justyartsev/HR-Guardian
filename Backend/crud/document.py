@@ -5,6 +5,7 @@ from schemas.document import (
     DocumentUpdate,
     DocumentVersionCreate
 )
+from core.enums import SyncStatus
 from datetime import datetime
 import os
 import shutil

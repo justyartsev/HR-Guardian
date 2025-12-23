@@ -31,6 +31,18 @@ def submit_feedback(
     return feedback
 
 
+# ⚠️ ВАЖНО: Специальный маршрут ПЕРЕД параметризованными
+# Получить статистику по жалобам (только для HR)
+@router.get("/stats/count", response_model=dict)
+def get_feedback_stats(
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(require_role('hr', 'admin'))
+):
+    """Получить количество жалоб (HR only)"""
+    count = crud_feedback.count_feedbacks(db)
+    return {"total_feedbacks": count}
+
+
 # Получить список всех жалоб (только для HR)
 @router.get("/", response_model=List[QueryFeedbackResponse])
 def get_all_feedbacks(
@@ -70,14 +82,3 @@ def delete_feedback(
     if not ok:
         raise HTTPException(status_code=404, detail="Feedback not found")
     return {"status": "deleted"}
-
-
-# Получить статистику по жалобам (только для HR)
-@router.get("/stats/count", response_model=dict)
-def get_feedback_stats(
-    db: Session = Depends(get_db),
-    current_user: UserModel = Depends(require_role('hr', 'admin'))
-):
-    """Получить количество жалоб (HR only)"""
-    count = crud_feedback.count_feedbacks(db)
-    return {"total_feedbacks": count}

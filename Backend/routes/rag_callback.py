@@ -1,8 +1,9 @@
 import os
 import requests
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from typing import Optional
 from database import get_db
 import crud.document as document_crud
 from core.config import settings
@@ -14,19 +15,28 @@ class SyncResult(BaseModel):
     document_id: int
     version_id: int
     chunks_created: int
+    callback_token: Optional[str] = None  # ✅ Токен в JSON
 
 
 @router.post("/rag/sync_result")
 def rag_sync_result(
     payload: SyncResult,
-    x_internal_token: str | None = Header(None, convert_underscores=False),
     db: Session = Depends(get_db),
 ):
-    """Callback от RAG для уведомления о результате синхронизации документа"""
-    # Проверка токена, если он установлен в конфиге
+    """Callback от RAG для уведомления о результате синхронизации документа
+    
+    Request JSON:
+    {
+      "document_id": 1,
+      "version_id": 5,
+      "chunks_created": 42,
+      "callback_token": "super_secret_token"
+    }
+    """
+    # ✅ Проверка токена в JSON, если он установлен в конфиге
     if settings.RAG_CALLBACK_SECRET:
-        if not x_internal_token or x_internal_token != settings.RAG_CALLBACK_SECRET:
-            raise HTTPException(status_code=403, detail="Invalid internal token")
+        if not payload.callback_token or payload.callback_token != settings.RAG_CALLBACK_SECRET:
+            raise HTTPException(status_code=403, detail="Invalid callback token")
 
     # Обновить статус синхронизации версии документа
     try:

@@ -2,12 +2,7 @@ import enum
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Enum
 from database import Base
-
-
-class UserRole(enum.Enum):
-    employee = "employee"
-    hr = "hr"
-    admin = "admin"
+from core.enums import UserRole
 
 
 class User(Base):

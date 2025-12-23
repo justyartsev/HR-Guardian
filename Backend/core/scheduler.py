@@ -3,6 +3,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models.document import Document, DocumentVersion
+from core.enums import SyncStatus
 from datetime import datetime
 
 logger = None
@@ -21,7 +22,6 @@ def activate_pending_documents():
     4. Меняет статус на SYNCING и отправляет в RAG
     5. RAG обработает, старые версии станут ARCHIVED
     """
-    from models.document import SyncStatus
     import requests
     
     db = SessionLocal()

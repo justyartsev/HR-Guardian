@@ -28,14 +28,14 @@ class QueryRequest(BaseModel):
     query: str  # вопрос пользователя
     dialog_id: Optional[int] = None  # ID диалога
     personal_data: Optional[PersonalData] = None  # персональные данные пользователя
+    context: Optional[List[dict]] = None  # История диалога (заполняется Backend перед отправкой в RAG)
 
 
 class QueryResponse(BaseModel):
-    """Ответ от RAG системы"""
-    response: str  # сгенерированный ответ
-    sources: List[dict]  # использованные источники
+    """Ответ от RAG системы (асинхронный)"""
+    request_id: str  # ID запроса для опроса результата
+    status: str  # "pending" - добавлен в очередь
     dialog_id: int  # ID диалога
-    document_id: Optional[int] = None  # ID документа для скачивания если просил полный
 
 
 # ====================== ENDPOINTS ======================
@@ -63,7 +63,7 @@ async def process_query(
         dialog = crud_dialog.get_dialog(db, request.dialog_id)
         if not dialog:
             raise HTTPException(status_code=404, detail="Dialog not found")
-        check_resource_ownership(dialog.user_id, current_user.id)
+        check_resource_ownership(dialog.user_id, current_user)
     else:
         dialog_create = schemas_dialog.DialogCreate(
             user_id=user_id,
@@ -75,29 +75,39 @@ async def process_query(
     context_messages = crud_dialog.get_messages(db, dialog.id, limit=10)
     
     # Подготовить контекст для RAG (в прямом хронологическом порядке для корректной истории диалога)
+    # ⚠️ Ограничиваем размер контекста чтобы не превышать token limit LLM
     context_history = []
+    total_chars = 0
+    max_context_chars = 2000  # ~500 tokens (примерно)
+    
     for msg in reversed(context_messages):
-        context_history.append({
-            "role": "assistant" if msg.sender == "bot" else "user",
-            "content": msg.text
-        })
+        msg_dict = {
+            "role": "assistant" if msg.role == "bot" else "user",
+            "content": msg.content
+        }
+        msg_chars = len(msg.content)
+        
+        # Если добавление этого сообщения превысит лимит - не добавляем
+        if total_chars + msg_chars > max_context_chars:
+            break
+        
+        context_history.append(msg_dict)
+        total_chars += msg_chars
     
     # Отправить запрос в RAG с историей диалога
+    # ✅ Теперь RAG возвращает request_id вместо полного ответа
     rag_request = {
         "query": request.query,
-        "context": context_history
+        "context": context_history,
+        "service_token": settings.RAG_SERVICE_TOKEN  # ✅ Токен в JSON
     }
     
     try:
-        # RAG ищет документы, формирует контекст и генерирует ответ через LLM
+        # RAG добавляет запрос в очередь и возвращает ID
         rag_response = requests.post(
             f"{settings.RAG_URL}/rag/answer",
             json=rag_request,
-            headers={
-                "X-User-ID": str(user_id),
-                "X-Role": current_user.role.name  # role из JWT токена (hr, admin, employee)
-            },
-            timeout=60
+            timeout=5  # Теперь только надо добавить в очередь (быстро!)
         )
         
         if rag_response.status_code != 200:
@@ -107,6 +117,7 @@ async def process_query(
             )
         
         rag_data = rag_response.json()
+        request_id = rag_data.get("request_id")
         
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=504, detail="RAG timeout")
@@ -115,29 +126,27 @@ async def process_query(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"RAG error: {str(e)}")
     
-    # Сохранить сообщения в диалог
+    # Сохранить сообщения в диалог (промежуточное состояние)
     user_msg = schemas_dialog.MessageCreate(
-        sender="user",
-        text=request.query,
+        role="user",
+        content=request.query,
         sources=None
     )
     crud_dialog.add_message(db, dialog.id, user_msg)
     
-    sources_data = rag_data.get("sources", [])
-    
+    # Bot сообщение со статусом "обработка"
     bot_msg = schemas_dialog.MessageCreate(
-        sender="bot",
-        text=rag_data.get("response", ""),
-        sources=sources_data
+        role="bot",
+        content=f"⏳ Обрабатываю ваш вопрос (ID: {request_id})...",
+        sources=None
     )
     crud_dialog.add_message(db, dialog.id, bot_msg)
     
-    # Вернуть ответ
+    # Вернуть ответ с ID запроса
     return QueryResponse(
-        response=rag_data.get("response", ""),
-        sources=sources_data,
-        dialog_id=dialog.id,
-        document_id=rag_data.get("document_id")  # Передаём ID документа если RAG его вернула
+        request_id=request_id,
+        status="pending",
+        dialog_id=dialog.id
     )
 
 
@@ -157,7 +166,7 @@ async def get_dialog_context(
     if not dialog:
         raise HTTPException(status_code=404, detail="Dialog not found")
     
-    check_resource_ownership(dialog.user_id, current_user.id)
+    check_resource_ownership(dialog.user_id, current_user)
     
     messages = crud_dialog.get_messages(db, dialog_id, limit)
     
@@ -166,3 +175,62 @@ async def get_dialog_context(
         "messages": messages,
         "message_count": len(messages)
     }
+
+
+@router.get("/{dialog_id}/result/{request_id}")
+async def get_rag_result(
+    dialog_id: int,
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Получить результат обработки от RAG по request_id (асинхронный результат).
+    
+    Статусы:
+    - pending: ждёт обработки
+    - processing: сейчас обрабатывается
+    - completed: результат готов (содержит response и sources)
+    - error: ошибка при обработке
+    """
+    dialog = crud_dialog.get_dialog(db, dialog_id)
+    if not dialog:
+        raise HTTPException(status_code=404, detail="Dialog not found")
+    
+    check_resource_ownership(dialog.user_id, current_user)
+    
+    try:
+        # Получаем результат от RAG
+        rag_response = requests.get(
+            f"{settings.RAG_URL}/rag/result/{request_id}",
+            timeout=5
+        )
+        
+        if rag_response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Request not found or expired")
+        
+        if rag_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="RAG error")
+        
+        result = rag_response.json()
+        
+        # Если результат готов, обновляем сообщение в диалоге
+        if result.get("status") == "completed":
+            # Обновляем bot сообщение с реальным ответом
+            response_text = result.get("response", "")
+            sources = result.get("sources", [])
+            
+            bot_msg = schemas_dialog.MessageCreate(
+                sender="bot",
+                text=response_text,
+                sources=sources
+            )
+            crud_dialog.add_message(db, dialog_id, bot_msg)
+        
+        return result
+        
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="RAG timeout")
+    except requests.exceptions.ConnectionError:
+        raise HTTPException(status_code=503, detail="RAG unavailable")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"RAG error: {str(e)}")

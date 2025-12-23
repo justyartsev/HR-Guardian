@@ -1,9 +1,9 @@
-from django.db import router
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 
 from dependencies.user import get_current_user
-from models import User
+from models.user import User
 
+router = APIRouter(prefix="/users", tags=["users"])
 
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_user)):

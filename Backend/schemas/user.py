@@ -1,20 +1,13 @@
 from pydantic import BaseModel, EmailStr, Field
-
-from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 from typing import Optional
-from enum import Enum
+from core.enums import UserRole
 
 
 class LoginSchema(BaseModel):
     email: EmailStr
     password: str
     
-class UserRole(str, Enum):
-    employee = "employee"
-    hr = "hr"
-    admin = "admin"
-
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr

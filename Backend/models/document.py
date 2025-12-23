@@ -1,17 +1,8 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
-import enum
 from datetime import datetime
 from database import Base
-from schemas.document import DocumentFormat
-
-# Статусы синхронизации версии документа с RAG системой
-class SyncStatus(enum.Enum):
-    PENDING = "pending"    # ожидает даты вступления (effective_from)
-    SYNCING = "syncing"    # отправлена в RAG на обработку
-    SYNCED = "synced"      # успешно обработана RAG, актуальная версия
-    ARCHIVED = "archived"  # заменена более новой версией
-    ERROR = "error"        # ошибка при синхронизации с RAG
+from core.enums import DocumentFormat, SyncStatus
 
 
 class Document(Base):

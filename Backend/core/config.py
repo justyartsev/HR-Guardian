@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # === RAG ===
     RAG_URL: str = os.getenv("RAG_URL", "http://localhost:8001")
     RAG_CALLBACK_SECRET: str = os.getenv("RAG_CALLBACK_SECRET", "")
+    RAG_SERVICE_TOKEN: str = os.getenv("RAG_SERVICE_TOKEN", "")  # Токен Backend→RAG
     
     # === ЛОГИРОВАНИЕ ===
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
