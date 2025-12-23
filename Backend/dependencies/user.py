@@ -46,3 +46,15 @@ def require_role(*allowed_roles: str):
             raise HTTPException(status_code=403, detail="Insufficient role")
         return current_user
     return _require
+
+
+def check_resource_ownership(resource_user_id: int, current_user: User):
+    """Helper функция для проверки доступа к ресурсу.
+    Raises:
+        HTTPException: 403 если пользователь не владеет ресурсом
+    """
+    if resource_user_id != current_user.id:
+        raise HTTPException(
+            status_code=403, 
+            detail="Access denied: this resource belongs to another user"
+        )

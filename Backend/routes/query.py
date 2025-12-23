@@ -9,7 +9,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from core.config import settings
 from models.user import User as UserModel
-from dependencies.user import get_current_user
+from dependencies.user import get_current_user, check_resource_ownership
 
 router = APIRouter(prefix="/query", tags=["Query"])
 
@@ -60,8 +60,9 @@ async def process_query(
     # Получить или создать диалог
     if request.dialog_id:
         dialog = crud_dialog.get_dialog(db, request.dialog_id)
-        if not dialog or dialog.user_id != user_id:
+        if not dialog:
             raise HTTPException(status_code=404, detail="Dialog not found")
+        check_resource_ownership(dialog.user_id, current_user.id)
     else:
         dialog_create = schemas_dialog.DialogCreate(
             user_id=user_id,
@@ -154,9 +155,7 @@ async def get_dialog_context(
     if not dialog:
         raise HTTPException(status_code=404, detail="Dialog not found")
     
-    # Row-level security: проверяем что диалог принадлежит пользователю
-    if dialog.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied: this dialog belongs to another user")
+    check_resource_ownership(dialog.user_id, current_user.id)
     
     messages = crud_dialog.get_messages(db, dialog_id, limit)
     

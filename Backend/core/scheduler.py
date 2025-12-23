@@ -12,33 +12,65 @@ scheduler = BackgroundScheduler()
 
 def activate_pending_documents():
     """
-    Ищет документы, у которых:
-    1. Нет текущей версии (current_version_id IS NULL)
-    2. Есть дата effective_from и она уже наступила
-    3. Есть хотя бы одна версия
+    Scheduler: отправляет документы в RAG когда наступает effective_from
+    
+    Логика:
+    1. Ищет документы без active версии (current_version_id IS NULL)
+    2. Проверяет effective_from <= текущее время
+    3. Ищет PENDING версию (не отправляли в RAG еще)
+    4. Меняет статус на SYNCING и отправляет в RAG
+    5. RAG обработает, старые версии станут ARCHIVED
     """
+    from models.document import SyncStatus
+    import requests
+    
     db = SessionLocal()
     try:
         now = datetime.utcnow()
         
-        # Ищем документы к активации
-        pending_docs = db.query(Document).filter(
+        # Ищем документы с наступившей effective_from и PENDING версией
+        pending_docs = db.query(Document).join(DocumentVersion).filter(
             Document.current_version_id.is_(None),
             Document.effective_from.isnot(None),
-            Document.effective_from <= now
+            Document.effective_from <= now,
+            DocumentVersion.sync_status == SyncStatus.PENDING
         ).all()
         
         for doc in pending_docs:
-            # Берем первую версию (самую старую)
-            first_version = db.query(DocumentVersion).filter(
-                DocumentVersion.document_id == doc.id
+            # Получаем PENDING версию
+            pending_version = db.query(DocumentVersion).filter(
+                DocumentVersion.document_id == doc.id,
+                DocumentVersion.sync_status == SyncStatus.PENDING
             ).order_by(DocumentVersion.created_at).first()
             
-            if first_version:
-                doc.current_version_id = first_version.id
+            if pending_version:
+                # Меняем статус на SYNCING
+                pending_version.sync_status = SyncStatus.SYNCING
+                db.commit()
+                
+                # Отправляем в RAG
+                try:
+                    from core.config import settings
+                    requests.post(
+                        f"{settings.RAG_URL}/rag/sync/document",
+                        json={
+                            "document_id": doc.id,
+                            "version_id": pending_version.id,
+                            "title": doc.title,
+                            "file_path": pending_version.file_path
+                        },
+                        headers={"X-Role": "admin"},
+                        timeout=60
+                    )
+                    print(f"[SCHEDULER] ✓ Отправлен документ {doc.id} версия {pending_version.id} в RAG")
+                except Exception as e:
+                    # Если RAG недоступна - возвращаем статус PENDING
+                    pending_version.sync_status = SyncStatus.PENDING
+                    db.commit()
+                    print(f"[SCHEDULER] ⚠ Ошибка отправки в RAG: {e}")
         
         if pending_docs:
-            db.commit()
+            print(f"[SCHEDULER] Обработано {len(pending_docs)} документов")
         
     except Exception as e:
         db.rollback()

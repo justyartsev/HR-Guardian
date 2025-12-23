@@ -4,7 +4,7 @@ from database import get_db
 import crud.dialog as crud
 import schemas.dialog as schemas
 from models.user import User as UserModel
-from dependencies.user import get_current_user
+from dependencies.user import get_current_user, check_resource_ownership
 
 router = APIRouter(prefix="/dialogs", tags=["Dialogs"])
 
@@ -42,10 +42,7 @@ def get_dialog(
     if not dialog:
         raise HTTPException(status_code=404, detail="Dialog not found")
     
-    # проверяем что диалог принадлежит пользователю
-    if dialog.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied: this dialog belongs to another user")
-    
+    check_resource_ownership(dialog.user_id, current_user)
     return dialog
 
 
@@ -60,8 +57,7 @@ def delete_dialog(
     if not dialog:
         raise HTTPException(status_code=404, detail="Dialog not found")
 
-    if dialog.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied: this dialog belongs to another user")
+    check_resource_ownership(dialog.user_id, current_user)
     
     crud.delete_dialog(db, dialog_id)
     return {"status": "deleted"}
@@ -79,8 +75,7 @@ def update_dialog(
     if not dialog:
         raise HTTPException(status_code=404, detail="Dialog not found")
 
-    if dialog.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied: this dialog belongs to another user")
+    check_resource_ownership(dialog.user_id, current_user)
     
     dialog = crud.update_dialog_title(db, dialog_id, update_data.title)
     return dialog
@@ -98,8 +93,7 @@ def add_message(
     if not dialog:
         raise HTTPException(status_code=404, detail="Dialog not found")
     
-    if dialog.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied: this dialog belongs to another user")
+    check_resource_ownership(dialog.user_id, current_user)
     
     return crud.add_message(db, dialog_id, message)
 
@@ -116,8 +110,7 @@ def get_messages(
     if not dialog:
         raise HTTPException(status_code=404, detail="Dialog not found")
     
-    if dialog.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied: this dialog belongs to another user")
+    check_resource_ownership(dialog.user_id, current_user)
     
     messages = crud.get_messages(db, dialog_id, limit)
     return list(reversed(messages))

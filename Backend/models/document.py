@@ -7,10 +7,11 @@ from schemas.document import DocumentFormat
 
 # Статусы синхронизации версии документа с RAG системой
 class SyncStatus(enum.Enum):
-    PENDING = "pending"  # ожидает синхронизации с RAG
-    SYNCED = "synced"    # успешно синхронизирован
-    SYNCING = "syncing"  # в процессе синхронизации
-    ERROR = "error"      # ошибка при синхронизации
+    PENDING = "pending"    # ожидает даты вступления (effective_from)
+    SYNCING = "syncing"    # отправлена в RAG на обработку
+    SYNCED = "synced"      # успешно обработана RAG, актуальная версия
+    ARCHIVED = "archived"  # заменена более новой версией
+    ERROR = "error"        # ошибка при синхронизации с RAG
 
 
 class Document(Base):

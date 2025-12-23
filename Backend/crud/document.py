@@ -72,6 +72,7 @@ def delete_document(db: Session, doc_id: int):
 
 
 def add_document_version(db: Session, doc_id: int, data: DocumentVersionCreate):
+    """Добавить новую версию к документу """
     doc = db.query(Document).filter(Document.id == doc_id).first()
     if not doc:
         return None
@@ -86,16 +87,26 @@ def add_document_version(db: Session, doc_id: int, data: DocumentVersionCreate):
     db.add(v)
     db.flush()
 
-    doc.current_version_id = v.id
+    # Не активируем автоматически! current_version_id остается как есть
+    # Версия будет активирована scheduler'ом когда наступит effective_from
+    # и версия будет синхронизирована (sync_status = SYNCED)
 
     db.commit()
     db.refresh(doc)
     return doc
 
 def create_empty_document(db: Session, data: DocumentCreate):
+    """Создать пустой документ без версий
+    
+    Документ останется неактивным (current_version_id = NULL) пока:
+    1. Не будет добавлена хотя бы одна версия
+    2. Версия не будет синхронизирована с RAG
+    3. Наступит дата effective_from (если установлена)
+    """
     doc = Document(
         title=data.title,
         effective_from=data.effective_from
+        # current_version_id остается NULL - неактивен
     )
     db.add(doc)
     db.commit()
@@ -104,7 +115,14 @@ def create_empty_document(db: Session, data: DocumentCreate):
 
 
 def update_version_sync(db: Session, version_id: int, chunks_created: int):
-    """Update sync status, total_chunks and synced_at for a document version."""
+    """Update sync status, total_chunks and synced_at for a document version.
+    
+    Когда версия синхронизирована:
+    1. Меняем статус SYNCING → SYNCED
+    2. Устанавливаем эту версию как current (текущая)
+    3. Старые версии становятся ARCHIVED
+    4. Возвращаем список старых версий для удаления из RAG
+    """
     from models.document import DocumentVersion, SyncStatus
     from datetime import datetime
 
@@ -112,12 +130,33 @@ def update_version_sync(db: Session, version_id: int, chunks_created: int):
     if not v:
         raise ValueError(f"DocumentVersion id={version_id} not found")
 
+    # Обновляем версию как успешно синхронизированную
     v.total_chunks = chunks_created
     v.synced_at = datetime.utcnow()
     v.sync_status = SyncStatus.SYNCED if chunks_created and chunks_created > 0 else SyncStatus.ERROR
+    
+    old_versions = []
+    
+    # Если успешно синхронизировано - делаем текущей и архивируем старые
+    if v.sync_status == SyncStatus.SYNCED:
+        doc = v.document
+        doc.current_version_id = version_id
+        
+        # Архивируем все старые версии этого документа
+        old_versions = db.query(DocumentVersion).filter(
+            DocumentVersion.document_id == doc.id,
+            DocumentVersion.id != version_id,
+            DocumentVersion.sync_status != SyncStatus.ARCHIVED
+        ).all()
+        
+        for old_v in old_versions:
+            old_v.sync_status = SyncStatus.ARCHIVED
+    
     db.commit()
     db.refresh(v)
-    return v
+    
+    # Возвращаем данные для удаления старых версий из RAG
+    return v, [(ov.document_id, ov.id) for ov in old_versions]
 
 
 def list_active_documents(db: Session):

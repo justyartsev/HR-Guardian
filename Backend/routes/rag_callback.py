@@ -1,4 +1,5 @@
 import os
+import requests
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -29,7 +30,21 @@ def rag_sync_result(
 
     # Обновить статус синхронизации версии документа
     try:
-        document_crud.update_version_sync(db, payload.version_id, payload.chunks_created)
+        version, old_versions = document_crud.update_version_sync(db, payload.version_id, payload.chunks_created)
+        
+        # Удалить чанки старых версий из RAG
+        for doc_id, old_version_id in old_versions:
+            try:
+                requests.delete(
+                    f"{settings.RAG_URL}/rag/sync/document/{doc_id}/version/{old_version_id}",
+                    headers={"X-Role": "admin"},
+                    timeout=30
+                )
+            except Exception as e:
+                # Логируем, но не падаем - удаление из RAG не критично
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to delete old version {old_version_id} from RAG: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

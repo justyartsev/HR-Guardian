@@ -62,6 +62,8 @@ async def create_document(
         
         version = DocumentVersionCreate(format=format, file_path=file_path)
         doc = document_crud.add_document_version(db, doc.id, version)
+        # ВАЖНО: Новая версия НЕ активируется! Она останется PENDING
+        # После синхронизации с RAG scheduler активирует её по расписанию
     else:
         # Создаём новый документ с первой версией
         doc_data = DocumentCreate(
@@ -81,22 +83,9 @@ async def create_document(
         
         version = DocumentVersionCreate(format=format, file_path=file_path)
         doc = document_crud.add_document_version(db, doc.id, version)
-
-    # Отправляем в RAG для обработки
-    try:
-        requests.post(
-            f"{settings.RAG_URL}/rag/sync/document",
-            json={
-                "document_id": doc.id,
-                "version_id": doc.current_version_id,
-                "title": doc.title,
-                "file_path": file_path
-            },
-            headers={"X-Role": "admin"},
-            timeout=60
-        )
-    except Exception as e:
-        pass
+        
+        # Версия остается PENDING
+        # Scheduler отправит в RAG когда наступит effective_from
 
     return doc
 
@@ -316,19 +305,7 @@ async def add_version(
     version = DocumentVersionCreate(format=format, file_path=file_path)
     doc = document_crud.add_document_version(db, doc_id, version)
     
-    try:
-        requests.post(
-            f"{settings.RAG_URL}/rag/sync/document",
-            json={
-                "document_id": doc.id,
-                "version_id": doc.current_version_id,
-                "title": doc.title,
-                "file_path": file_path
-            },
-            headers={"X-Role": "admin"},
-            timeout=60
-        )
-    except Exception as e:
-        pass
+    # Версия остается PENDING
+    # Scheduler отправит в RAG когда наступит effective_from
     
     return doc

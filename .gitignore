@@ -1,0 +1,23 @@
+# Игнорировать pycache во всех подпапках
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Игнорировать виртуальные окружения
+venv/
+back_env/
+rag_env/
+
+# Игнорировать RAG папку (отдельная ветка)
+RAG/
+
+# Игнорировать IDE и системные файлы
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Локальные папки
+documents/
