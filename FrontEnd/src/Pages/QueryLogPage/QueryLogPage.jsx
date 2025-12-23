@@ -75,7 +75,7 @@ export function QueryLogPage({
         onTabChange={handleTabChange}
         chats={chats}
         onNewChat={handleNewChat}
-        username={userInfo?.username || "Петров Пётр Петрович"}
+        username={userInfo?.username || "Пользователь"}
         onChatSelect={handleChatSelect}
         onRenameChat={onRenameChat} // Передаем
         onDeleteChat={onDeleteChat}
