@@ -11,8 +11,8 @@ class SourceReference(BaseModel):
 
 
 class MessageBase(BaseModel):
-    sender: str
-    text: str
+    role: str  # "user", "assistant", "system"
+    content: str
 
 
 class MessageCreate(MessageBase):
@@ -32,16 +32,21 @@ class Message(MessageBase):
 
 
 class DialogBase(BaseModel):
-    user_id: int
     title: Optional[str] = None
 
 
 class DialogCreate(DialogBase):
-    pass
+    user_id: Optional[int] = None  # устанавливается сервером автоматически
+
+
+class DialogUpdate(BaseModel):
+    """Обновление диалога - JSON Body"""
+    title: str  # обязательное поле при обновлении
 
 
 class Dialog(DialogBase):
     id: int
+    user_id: int  # возвращается в ответе
     created_at: datetime
     messages: List[Message] = []
 
