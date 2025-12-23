@@ -1,7 +1,7 @@
 services:
   backend:
     container_name: hr-guardian-backend
-    image: olekkm/hr-guardian-backend:latest
+#    image: "imagename" #Указать ссылку на образ
     environment:
       SECRET_KEY: beablodola
       ALGORITHM: HS256
@@ -30,6 +30,7 @@ services:
 
   gateway:
     image: nginx:stable-alpine
+    container_name: hr-guardians-gateway
     volumes:
       - ./.nginx/:/etc/nginx/conf.d/
     ports:
@@ -38,6 +39,8 @@ services:
     depends_on:
       - backend
       - frontend
+      - rag
+      - ollama
 
   frontend:
     environment:
@@ -50,12 +53,19 @@ services:
     environment:
       - name=value
 #    image: "imagename" #Указать ссылку на образ
-    command: --host 0.0.0.0 --port 9000
+    command: --host 0.0.0.0 --port 9000 --root-path /rag
     volumes:
       - vectordb:/app/vectordb:rw
+
+  ollama:
+#    image: "imagename" #Указать ссылку на образ
+    container_name: ollama
+    volumes:
+      - ollama:/root/.ollama:rw
 
 volumes:
   api-data:
   vectordb: 
+  ollama:
 
 
