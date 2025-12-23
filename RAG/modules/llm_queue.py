@@ -8,12 +8,64 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def build_prompt(query: str, context: Optional[list] = None, personal_data: Optional[dict] = None, chunks: Optional[list] = None) -> str:
+    """Собирает полный промпт для LLM из всех компонентов
+    
+    Параметры:
+    - query: основной вопрос пользователя
+    - context: история диалога (список сообщений с role и content)
+    - personal_data: данные пользователя (full_name, position, department, employee_id)
+    - chunks: релевантные чанки из документов
+    
+    Возвращает: полностью сформированный промпт
+    """
+    parts = []
+    
+    # 1. История диалога (если есть)
+    if context:
+        parts.append("История диалога:")
+        for msg in context[-5:]:  # Последние 5 сообщений
+            role = "Пользователь" if msg.get("role") == "user" else "HR Ассистент"
+            content = msg.get("content", "")
+            parts.append(f"{role}: {content}")
+        parts.append("")
+    
+    # 2. Персональные данные (если есть)
+    if personal_data and any(personal_data.values()):
+        parts.append("Информация о пользователе:")
+        if personal_data.get("full_name"):
+            parts.append(f"ФИ: {personal_data.get('full_name')}")
+        if personal_data.get("position"):
+            parts.append(f"Должность: {personal_data.get('position')}")
+        if personal_data.get("department"):
+            parts.append(f"Отдел: {personal_data.get('department')}")
+        parts.append("")
+    
+    # 3. Релевантные чанки из документов
+    if chunks:
+        parts.append("Информация из документов:")
+        for i, chunk in enumerate(chunks[:3]):  # Максимум 3 чанка
+            parts.append(f"Документ {i+1}: {chunk[:300]}...")  # Первые 300 символов
+        parts.append("")
+    else:
+        parts.append("(Документы не найдены)")
+        parts.append("")
+    
+    # 4. Основной вопрос
+    parts.append(f"Вопрос: {query}")
+    parts.append("\nОтвет:")
+    
+    return "\n".join(parts)
+
+
 class LLMRequest:
     """Объект запроса к LLM с трекингом статуса"""
     
-    def __init__(self, prompt: str, request_id: Optional[str] = None):
+    def __init__(self, prompt: str, context: Optional[list] = None, personal_data: Optional[dict] = None, request_id: Optional[str] = None):
         self.id = request_id or str(uuid.uuid4())
         self.prompt = prompt
+        self.context = context or [] 
+        self.personal_data = personal_data or {} 
         self.status = "pending"  # pending, processing, completed, error
         self.response = None
         self.error = None
@@ -47,9 +99,9 @@ class LLMQueue:
         self.processing = False
         self.executor: Optional[Executor] = None  # Executor для ограничения параллелизма ollama
     
-    async def add_request(self, prompt: str) -> str:
-        """Добавить запрос в очередь. Возвращает ID запроса"""
-        request = LLMRequest(prompt)
+    async def add_request(self, prompt: str, context: Optional[list] = None, personal_data: Optional[dict] = None) -> str:
+        """Добавить запрос в очередь с контекстом и personal_data. Возвращает ID запроса"""
+        request = LLMRequest(prompt, context=context, personal_data=personal_data)
         
         try:
             # Пытаемся добавить в очередь с timeout (чтобы не зависнуть)
@@ -92,10 +144,18 @@ class LLMQueue:
                 logger.info(f"Processing request {request.id}")
                 
                 try:
+                    # ✅ Собираем полный промпт с контекстом и personal_data перед отправкой в LLM
+                    # (поиск чанков происходит в query.py если нужно)
+                    full_prompt = build_prompt(
+                        query=request.prompt,
+                        context=request.context,
+                        personal_data=request.personal_data
+                    )
+                    
                     # Обрабатываем LLM запрос с использованием dedicated executor (1 поток)
                     loop = asyncio.get_event_loop()
                     executor = self.executor or None  # Используем наш executor если он установлен
-                    response = await loop.run_in_executor(executor, llm_answer_func, request.prompt)
+                    response = await loop.run_in_executor(executor, llm_answer_func, full_prompt)
                     request.response = response
                     request.status = "completed"
                     logger.info(f"Request {request.id} completed successfully")
