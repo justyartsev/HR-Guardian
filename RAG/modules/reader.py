@@ -13,23 +13,12 @@ import pytesseract
 
 class DocumentReader:
     def __init__(self, tesseract_cmd: str = None):
-        """
-        Инициализация читателя документов.
-
-        :param tesseract_cmd: Путь к tesseract.exe (только для Windows, если он не в PATH).
-        """
+        """Инициализирует читатель документов (параметры: tesseract_cmd; возвращает: None)."""
         if tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
     def read(self, file_path: str) -> str:
-        """
-        Автоматически определяет тип файла по расширению и возвращает его текстовое содержимое.
-
-        Поддерживаемые форматы: .txt, .docx, .md, .pdf
-
-        :param file_path: Путь к файлу.
-        :return: Текст из файла.
-        """
+        """Читает документ (TXT, DOCX, MD, PDF) по расширению файла (параметры: file_path; возвращает: str текст)."""
         path = Path(file_path)
         if not path.is_file():
             raise FileNotFoundError(f"Файл не найден: {file_path}")
@@ -47,6 +36,7 @@ class DocumentReader:
             raise ValueError(f"Неподдерживаемый формат файла: {ext}")
 
     def _read_txt(self, file_path: str) -> str:
+        """Читает TXT файл с UTF-8 кодировкой (параметры: file_path; возвращает: str)."""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 return f.read()
@@ -55,6 +45,7 @@ class DocumentReader:
             return ""
 
     def _read_docx(self, file_path: str) -> str:
+        """Читает DOCX: параграфы и таблицы с markdown-форматированием (параметры: file_path; возвращает: str)."""
         try:
             doc = Document(file_path)
             full_text = []
@@ -64,6 +55,7 @@ class DocumentReader:
                     full_text.append(para.text)
 
             for table in doc.tables:
+                # Преобразуем таблицу в markdown-формат
                 table_text = []
                 for row in table.rows:
                     cells = [cell.text.strip() for cell in row.cells]
@@ -79,11 +71,12 @@ class DocumentReader:
 
 
     def _read_md(self, file_path: str) -> str:
+        """Читает Markdown: конвертирует в HTML и удаляет теги (параметры: file_path; возвращает: str)."""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 md_text = f.read()
             html = markdown.markdown(md_text)
-            # Удаляем HTML-теги простым регулярным выражением
+            # Удаляем HTML-теги регулярным выражением
             clean_text = re.sub(r'<[^>]+>', '', html)
             return clean_text
         except Exception as e:
@@ -91,14 +84,17 @@ class DocumentReader:
             return ""
 
     def _read_pdf(self, file_path: str) -> str:
+        """Читает PDF: текст со страниц или OCR если требуется (параметры: file_path; возвращает: str)."""
         try:
             doc = fitz.open(file_path)
             full_text = ""
             for page in doc:
+                # Пытаемся извлечь текст
                 text = page.get_text().strip()
                 if text:
                     full_text += text + "\n"
                 else:
+                    # Если текста нет, применяем OCR к изображению страницы
                     pix = page.get_pixmap(dpi=150)
                     img = Image.open(io.BytesIO(pix.tobytes("png")))
                     ocr_text = pytesseract.image_to_string(img, lang='rus+eng')

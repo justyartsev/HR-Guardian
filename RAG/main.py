@@ -6,27 +6,26 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from datetime import datetime
 import io
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
-# Явная конфигурация UTF-8 (критично для Windows)
+# Явная конфигурация UTF-8 для Windows
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Импорт routes и модулей
 try:
     from routes import query_router, sync_router
 except ImportError as e:
-    print(f"Ошибка импорта routes: {e}")
     raise
 
 try:
     from modules.db_utility import init_vectordb
 except ImportError as e:
-    print(f"Ошибка импорта модулей: {e}")
     raise
 
-# Конфигурация приложения
+# Приложение FastAPI
 app = FastAPI(
     title="HR-Guardian RAG API",
     description="RAG система для HR ассистента",
@@ -35,43 +34,35 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Обработчик ошибок валидации (логирование для отладки)
+# Обработчик ошибок валидации
 @app.exception_handler(RequestValidationError)
 async def validation_handler(request: Request, exc: RequestValidationError):
-    """Логирует детали ошибок валидации для отладки."""
-    print(f"[RAG VALIDATION ERROR] {request.method} {request.url}")
-    print(f"[RAG VALIDATION ERROR] Details: {exc.errors()}")
+    """Логирует ошибки валидации (обработка исключений)."""
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors()},
     )
+    
 
-# Middleware для логирования запросов
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Логирует входящие и исходящие запросы."""
-    try:
-        print(f"[RAG] {request.method} {request.url.path}")
-    except Exception:
-        pass
-    
-    response = await call_next(request)
-    
-    try:
-        print(f"[RAG] Response {response.status_code} {request.method} {request.url.path}")
-    except Exception:
-        pass
-    
-    return response
-
-# Инициализация Chroma на стартапе
+# Инициализация Chroma при стартапе
 @app.on_event("startup")
-def startup():
-    """Инициализирует Chroma PersistentClient."""
+async def startup():
+    """Инициализирует Chroma PersistentClient и запускает LLM queue worker (параметры: нет; возвращает: None)."""
     try:
         init_vectordb()
+        # Создаем single-thread executor для ограничения параллелизма ollama (макс 1 запрос)
+        from modules.llm_queue import set_executor, get_llm_queue
+        from modules.LLM import answer
+        
+        single_thread_executor = ThreadPoolExecutor(max_workers=1)
+        set_executor(single_thread_executor)
+        print("[RAG] Single-thread executor initialized for LLM")
+        
+        llm_queue = get_llm_queue()
+        asyncio.create_task(llm_queue.process_queue(answer))
+        print("[RAG] LLM Queue worker started")
     except Exception as e:
-        print(f"[RAG] Warning: Vectordb init failed: {e}")
+        print(f"[RAG] Warning: Startup init failed: {e}")
 
 # Регистрация routes
 app.include_router(query_router)
@@ -102,16 +93,3 @@ async def health_check():
         "vectordb": "connected"  # в реальности нужна проверка подключения
     }
 
-
-# ====================== ЗАПУСК ======================
-# Для запуска используйте:
-# uvicorn app.main:app --reload --port 8001
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8001,
-        reload=True
-    )

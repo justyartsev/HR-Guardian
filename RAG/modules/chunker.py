@@ -9,13 +9,6 @@ try:
 except Exception:
     torch = None
 
-# NOTE:
-# - We avoid loading the heavy model at import time to reduce memory footprint.
-# - `temporary_model` loads a model for the duration of a `with` block and
-#   attempts to release it afterwards (including `torch.cuda.empty_cache()` when available).
-# - We keep an optional lightweight `small` model cached for query-time embeddings
-#   to keep search latency low; it can be closed via `close_small_model()` when needed.
-
 DEFAULT_EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "intfloat/multilingual-e5-base")
 
 _small_model = None
@@ -23,13 +16,13 @@ _small_model = None
 
 @contextmanager
 def temporary_model(model_name: str = "intfloat/multilingual-e5-base"):
-    """Context manager that loads a SentenceTransformer model and releases it afterwards."""
+    """Загружает SentenceTransformer и освобождает память (параметры: model_name; возвращает: model)."""
     model = SentenceTransformer(model_name)
     try:
         yield model
     finally:
         try:
-            # try to delete references and free CUDA memory if available
+            # Удаляет ссылки и очищает CUDA память
             del model
             if torch is not None:
                 try:
@@ -46,27 +39,17 @@ def semantic_chunking_vectors(
     max_sentences_per_chunk: int = 10,
     model_name: str = "intfloat/multilingual-e5-base"
 ) -> tuple[list[str], list[np.ndarray]]:
-    """
-    Семантически разбивает текст на чанки и возвращает как сами чанки, так и их усреднённые эмбеддинги.
-
-    :param text: входной текст на русском
-    :param model_name: имя модели для эмбеддингов
-    :param similarity_threshold: порог косинусного сходства (от 0 до 1)
-    :param max_sentences_per_chunk: максимальное число предложений в чанке
-    :return: кортеж из двух списков:
-             1) список чанков (строк),
-             2) список усреднённых эмбеддингов для каждого чанка (numpy arrays)
-    """
-    # 1. Разбиваем на предложения
+    """Семантически разбивает текст на чанки и возвращает чанки + усреднённые embeddings (параметры: text, similarity_threshold, max_sentences_per_chunk, model_name; возвращает: (chunks, embeddings))."""
+    # Разбиваем на предложения
     sentences = [sent.text for sent in sentenize(text) if sent.text.strip()]
     if not sentences:
         return [], []
 
-    # 2. Загружаем модель только на время вычисления эмбеддингов
+    # Кодируем предложения с префиксом для семантического поиска
     passage_sentences = [f"passage: {sent}" for sent in sentences]
     with temporary_model(model_name) as model:
         embeddings = model.encode(passage_sentences, normalize_embeddings=True)
-    # 3. Формируем чанки и собираем соответствующие им усреднённые эмбеддинги
+    # Формируем чанки и собираем усреднённые embeddings
     chunks = []
     chunk_embeddings = []
 
@@ -86,7 +69,7 @@ def semantic_chunking_vectors(
         else:
             # Чанк завершён, сохраняем его
             chunks.append(" ".join(current_chunk_sentences))
-            # Усредняем эмбеддинги всех предложений в чанке
+            # Усредняем embeddings всех предложений в чанке
             avg_embedding = np.mean(current_chunk_embeddings_list, axis=0)
             chunk_embeddings.append(avg_embedding)
 
@@ -94,7 +77,7 @@ def semantic_chunking_vectors(
             current_chunk_sentences = [new_sent]
             current_chunk_embeddings_list = [new_emb]
 
-    # Не забываем про последний чанк
+    # Сохраняем последний чанк
     if current_chunk_sentences:
         chunks.append(" ".join(current_chunk_sentences))
         avg_embedding = np.mean(current_chunk_embeddings_list, axis=0)
@@ -103,6 +86,7 @@ def semantic_chunking_vectors(
     return chunks, chunk_embeddings
 
 def _get_small_model(model_name: str | None = None):
+    """Загружает кэшированную модель embeddings (параметры: model_name; возвращает: SentenceTransformer)."""
     global _small_model
     if model_name is None:
         model_name = DEFAULT_EMBEDDING_MODEL
@@ -112,7 +96,7 @@ def _get_small_model(model_name: str | None = None):
 
 
 def close_small_model():
-    """Close and release the cached small model used for query vectorizing."""
+    """Освобождает кэшированную модель и память CUDA (параметры: нет; возвращает: None)."""
     global _small_model
     try:
         del _small_model
@@ -127,10 +111,6 @@ def close_small_model():
 
 
 def query_vectorizing(query, model_name: str | None = None):
-    """Vectorize a query using the cached model (loaded on demand).
-
-    By default this uses the same embedding model as chunking to ensure
-    embedding dimensionality matches the vectors stored in the collection.
-    """
+    """Кодирует query в embedding с префиксом query: (параметры: query, model_name; возвращает: list float)."""
     model = _get_small_model(model_name)
     return model.encode(f"query: {query}", normalize_embeddings=True).tolist()
