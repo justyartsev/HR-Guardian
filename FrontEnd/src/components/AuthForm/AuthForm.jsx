@@ -200,8 +200,8 @@ export default function AuthForm({ isLogin }) {
     try {
       if (isLogin) {
         // Вход
-        const response = await authService.login(email, password);
-        console.log('Login successful:', response);
+        await authService.login(email, password);
+        console.log('Login successful');
         navigate('/chat');
       } else {
         // Регистрация - генерируем username
@@ -215,11 +215,8 @@ export default function AuthForm({ isLogin }) {
           lastName,
         };
         
-        const response = await authService.register(userData);
-        console.log('Registration successful:', response);
-        
-        // Автоматический вход после регистрации
-        await authService.login(email, password);
+        await authService.register(userData);
+        console.log('Registration and auto-login successful');
         navigate('/chat');
       }
     } catch (error) {

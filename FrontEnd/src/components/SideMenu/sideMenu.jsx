@@ -137,13 +137,16 @@ export default function SideMenu({
     }
 
     // placeHolder for loadChats function
-    async function loadChats() {
-        const response = await fetch();
-        return response.ok;
-    }
+    //async function loadChats() {
+    //    const response = await fetch();
+    //    return response.ok;
+    //}
 
     // placeholder to load chats on component render or dependency change (no deps now)
-    useEffect(() => loadChats, [])
+    useEffect(() => {
+    
+        console.log("SideMenu mounted");
+    },[])
 
     // Обработчик клика по вкладке
     const handleTabClick = (tabName) => {

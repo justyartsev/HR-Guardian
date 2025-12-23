@@ -5,102 +5,103 @@ import { ReportMessageModal } from "../../components/Modal/ReportMessageModal";
 import { dialogService } from "../../services/dialogService";
 import { authService } from "../../services/authService";
 
-// Функция для генерации имени нового чата (локально, пока нет бэкенда)
-const generateChatName = (existingChats) => {
+// Функция для форматирования имени пользователя
+const formatUserName = (user) => {
+  if (!user) return "Гость";
+  
+  if (user.firstName && user.lastName) {
+    return `${user.lastName} ${user.firstName}`;
+  }
+  
+  if (user.username) {
+    return user.username;
+  }
+  
+  return user.email?.split('@')[0] || "Пользователь";
+};
+
+// Функция для получения следующего номера чата
+const getNextChatNumber = (existingChats) => {
   const chatNumbers = existingChats
     .map(chat => {
-      const match = chat.name.match(/Чат (\d+)/);
+      const match = chat.name.match(/^Чат (\d+)$/);
       return match ? parseInt(match[1]) : 0;
     })
     .filter(num => num > 0);
   
-  const nextNumber = chatNumbers.length > 0 ? Math.max(...chatNumbers) + 1 : 1;
-  return `Чат ${nextNumber}`;
+  return chatNumbers.length > 0 ? Math.max(...chatNumbers) + 1 : 1;
 };
 
 export function MainPageContainer() {
   const navigate = useNavigate();
   
-  // Получаем текущего пользователя
+  // Состояния
   const [currentUser, setCurrentUser] = useState(() => {
-    const userData = JSON.parse(localStorage.getItem('user'));
-    return userData || { username: "Петров Пётр Петрович" };
+    return authService.getCurrentUser();
   });
-
-  // Состояние для чатов
-  const [chats, setChats] = useState(() => {
-    const savedChats = localStorage.getItem('hrg_chats');
-    if (savedChats) {
-      return JSON.parse(savedChats);
-    }
-    // Начальные чаты
-    return [
-      { id: 1, name: "Чат 1", messages: [
-        {
-          id: 1,
-          type: "input",
-          content: "Покажи дату моей следующей аттестации",
-          showReportButton: false,
-          timestamp: new Date().toISOString()
-        },
-        {
-          id: 2,
-          type: "output",
-          content: "Дата вашей следующей аттестации - 20.10.2025. Если вы хотите посмотреть соответствующий документ, то вот он – 'Ссылка'",
-          showReportButton: true,
-          timestamp: new Date().toISOString()
-        }
-      ]},
-      { id: 2, name: "Чат 2", messages: [] }
-    ];
-  });
-
-  // Текущий активный чат
-  const [activeChatId, setActiveChatId] = useState(chats[0]?.id || null);
-  
-  // Состояния для модального окна жалобы
+  const [chats, setChats] = useState([]);
+  const [activeChatId, setActiveChatId] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  
-  // Текущий ввод сообщения
   const [inputValue, setInputValue] = useState("");
-  
-  // Флаг загрузки данных с бэкенда
-  const [loadingBackendData, setLoadingBackendData] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Проверяем авторизацию при загрузке
+  // Получаем отформатированное имя пользователя
+  const userName = formatUserName(currentUser);
+
+  // При загрузке проверяем авторизацию и загружаем данные
   useEffect(() => {
-    const checkAuth = async () => {
+    const init = async () => {
+      // 1. Проверяем токен
       if (!authService.isAuthenticated()) {
-        // Если нет токена, редирект на логин
+        navigate('/login');
+        return;
+      }
+
+      // 2. Получаем данные пользователя
+      const user = await authService.getCurrentUser();
+      if (!user) {
+        authService.logout();
         navigate('/login');
         return;
       }
       
-      // Пытаемся получить пользователя
-      const user = await authService.getCurrentUser();
-      if (user) {
-        setCurrentUser(user);
-      }
+      setCurrentUser(user);
+      
+      // 3. Загружаем диалоги пользователя из бэкенда
+      await loadUserDialogs(user.id);
+      
+      setIsLoading(false);
     };
-    
-    checkAuth();
+
+    init();
   }, [navigate]);
 
-  // Загружаем диалоги с бэкенда при наличии пользователя
-  useEffect(() => {
-    const loadBackendDialogs = async () => {
-      if (!currentUser?.id) return;
+  // Загрузка диалогов из бэкенда
+  const loadUserDialogs = async (userId) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const dialogs = await dialogService.getUserDialogs(userId);
       
-      setLoadingBackendData(true);
-      try {
-        const dialogs = await dialogService.getUserDialogs(currentUser.id);
+      if (dialogs && dialogs.length > 0) {
+        // Сортируем диалоги по дате создания (новые сверху)
+        const sortedDialogs = [...dialogs].sort((a, b) => 
+          new Date(b.created_at) - new Date(a.created_at)
+        );
         
-        if (dialogs.length > 0) {
-          // Преобразуем данные бэкенда в формат фронтенда
-          const formattedChats = dialogs.map(dialog => ({
+        // Загружаем существующие чаты из localStorage для сохранения переименований
+        const storedChats = JSON.parse(localStorage.getItem('hrg_chats') || '[]');
+        const storedChatsMap = new Map(storedChats.map(chat => [chat.id, chat]));
+        
+        // Форматируем чаты, сохраняя переименованные названия
+        const formattedChats = sortedDialogs.map(dialog => {
+          const storedChat = storedChatsMap.get(dialog.id);
+          return {
             id: dialog.id,
-            name: dialog.title || `Чат ${dialog.id}`,
+            name: storedChat?.name || dialog.title || `Чат ${getNextChatNumber([])}`,
             messages: dialog.messages?.map(msg => ({
               id: msg.id,
               type: msg.sender === 'user' ? 'input' : 'output',
@@ -108,228 +109,298 @@ export function MainPageContainer() {
               showReportButton: msg.sender !== 'user',
               timestamp: msg.created_at,
             })) || [],
-          }));
-          
-          setChats(formattedChats);
-          if (formattedChats.length > 0) {
-            setActiveChatId(formattedChats[0].id);
-          }
-          
-          // Сохраняем в localStorage как резервную копию
-          localStorage.setItem('hrg_chats', JSON.stringify(formattedChats));
-        }
-      } catch (error) {
-        console.error('Error loading dialogs from backend:', error);
-        // Продолжаем работу с локальными данными при ошибке
-      } finally {
-        setLoadingBackendData(false);
+          };
+        });
+        
+        setChats(formattedChats);
+        setActiveChatId(formattedChats[0]?.id || null);
+        
+        // Сохраняем локально как кэш
+        localStorage.setItem('hrg_chats', JSON.stringify(formattedChats));
+      } else {
+        // Нет диалогов - пустой список
+        setChats([]);
+        setActiveChatId(null);
+        localStorage.removeItem('hrg_chats');
       }
-    };
-    
-    loadBackendDialogs();
-  }, [currentUser?.id]);
-
-  // Сохраняем чаты в localStorage при изменении (как резервная копия)
-  useEffect(() => {
-    if (!loadingBackendData) {
-      localStorage.setItem('hrg_chats', JSON.stringify(chats));
+    } catch (error) {
+      console.error('Error loading dialogs:', error);
+      setError('Не удалось загрузить диалоги');
+      
+      // Fallback: пытаемся загрузить из localStorage
+      try {
+        const savedChats = localStorage.getItem('hrg_chats');
+        if (savedChats) {
+          const parsedChats = JSON.parse(savedChats);
+          setChats(parsedChats);
+          setActiveChatId(parsedChats[0]?.id || null);
+          console.log('Loaded chats from localStorage fallback');
+        } else {
+          setChats([]);
+        }
+      } catch (fallbackError) {
+        console.error('Fallback loading error:', fallbackError);
+        setChats([]);
+      }
+    } finally {
+      setIsLoading(false);
     }
-  }, [chats, loadingBackendData]);
-
-  // Получаем активный чат
-  const activeChat = chats.find(chat => chat.id === activeChatId) || chats[0];
-  const messages = activeChat?.messages || [];
+  };
 
   // Создание нового чата
   const handleNewChat = async () => {
-    if (!authService.isAuthenticated()) {
+    if (!currentUser?.id) {
       navigate('/login');
       return;
     }
 
+    setIsLoading(true);
+    
     try {
-      // Пытаемся создать чат в бэкенде
-      if (currentUser?.id) {
-        const newDialog = await dialogService.createDialog(null, currentUser.id);
-        
-        const newChat = {
-          id: newDialog.id,
-          name: newDialog.title || `Чат ${newDialog.id}`,
-          messages: [],
-        };
-        
-        setChats(prev => [...prev, newChat]);
-        setActiveChatId(newChat.id);
-        setInputValue("");
-        
-        console.log("Создан новый чат в бэкенде:", newChat.name);
-        return;
-      }
+      const nextNumber = getNextChatNumber(chats);
+      const chatName = `Чат ${nextNumber}`;
+      
+      const newDialog = await dialogService.createDialog(chatName, currentUser.id);
+      
+      const newChat = {
+        id: newDialog.id,
+        name: chatName,
+        messages: [],
+      };
+      
+      // Добавляем новый чат в начало списка
+      const updatedChats = [newChat, ...chats];
+      setChats(updatedChats);
+      setActiveChatId(newChat.id);
+      setInputValue("");
+      
+      // Сохраняем локально
+      localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
+      
+      console.log("Создан новый чат:", newChat.name);
     } catch (error) {
-      console.error('Error creating chat in backend:', error);
-      // При ошибке создаем локальный чат
+      console.error('Error creating chat:', error);
+      setError('Не удалось создать чат');
+      
+      // Fallback: создаем локальный чат
+      const newChatId = Date.now();
+      const nextNumber = getNextChatNumber(chats);
+      const chatName = `Чат ${nextNumber}`;
+      
+      const newChat = {
+        id: newChatId,
+        name: chatName,
+        messages: []
+      };
+      
+      const updatedChats = [newChat, ...chats];
+      setChats(updatedChats);
+      setActiveChatId(newChatId);
+      localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
+    } finally {
+      setIsLoading(false);
     }
-    
-    // Создаем локальный чат при ошибке или отсутствии пользователя
-    const newChatId = Date.now();
-    const newChatName = generateChatName(chats);
-    
-    const newChat = {
-      id: newChatId,
-      name: newChatName,
-      messages: []
-    };
-    
-    setChats(prev => [...prev, newChat]);
-    setActiveChatId(newChatId);
-    setInputValue("");
-    
-    console.log("Создан новый локальный чат:", newChatName);
-  };
-
-  // Выбор чата
-  const handleChatSelect = (chat) => {
-    setActiveChatId(chat.id);
-    setInputValue("");
-    console.log("Выбран чат:", chat.name);
   };
 
   // Переименование чата
   const handleRenameChat = async (chatId, newName) => {
     try {
-      // Пытаемся обновить в бэкенде
+      // Обновляем в бэкенде
       await dialogService.updateDialogTitle(chatId, newName);
     } catch (error) {
       console.error('Error updating chat title in backend:', error);
     }
     
     // Обновляем локально
-    setChats(prev => prev.map(chat => 
+    const updatedChats = chats.map(chat => 
       chat.id === chatId ? { ...chat, name: newName } : chat
-    ));
+    );
     
-    console.log(`Чат ${chatId} переименован в:`, newName);
+    setChats(updatedChats);
+    localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
+    
+    console.log(`Чат переименован: ${newName}`);
   };
 
-  // Удаление чата
+  // Удаление чата БЕЗ перенумерации
   const handleDeleteChat = async (chatId) => {
     if (chats.length <= 1) {
       alert("Нельзя удалить последний чат");
       return;
     }
     
-    try {
-      // Пытаемся удалить из бэкенда
-      await dialogService.deleteDialog(chatId);
-    } catch (error) {
-      console.error('Error deleting chat from backend:', error);
-    }
-    
-    // Удаляем локально
-    setChats(prev => {
-      const filtered = prev.filter(chat => chat.id !== chatId);
-      if (chatId === activeChatId) {
-        setActiveChatId(filtered[0]?.id || null);
-      }
-      return filtered;
-    });
-    
-    console.log("Удален чат:", chatId);
-  };
-
-  // Отправка сообщения в активный чат
-  const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
-    
-    // Проверяем авторизацию
-    if (!authService.isAuthenticated()) {
-      navigate('/login');
+    if (!window.confirm("Вы уверены, что хотите удалить этот чат?")) {
       return;
     }
+    
+    try {
+      // Удаляем из бэкенда
+      await dialogService.deleteDialog(chatId);
+    } catch (error) {
+      console.error('Error deleting from backend:', error);
+    }
+    
+    // Удаляем локально БЕЗ перенумерации
+    const updatedChats = chats.filter(chat => chat.id !== chatId);
+    setChats(updatedChats);
+    
+    if (chatId === activeChatId) {
+      setActiveChatId(updatedChats[0]?.id || null);
+    }
+    
+    localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
+  };
 
-    const userMessage = {
-      id: Date.now(),
-      type: "input",
-      content: inputValue,
-      showReportButton: false,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Обновляем сообщения в активном чате локально
-    setChats(prev => prev.map(chat => 
-      chat.id === activeChatId 
-        ? { ...chat, messages: [...chat.messages, userMessage] }
-        : chat
-    ));
-    
+  // Отправка сообщения
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || !currentUser?.id || !activeChatId) return;
+
+    const messageText = inputValue.trim();
     setInputValue("");
     
     try {
-      // Отправляем сообщение в бэкенд
-      if (currentUser?.id) {
-        await dialogService.sendMessage(activeChatId, inputValue, 'user');
-      }
-    } catch (error) {
-      console.error('Error sending message to backend:', error);
-    }
-    
-    // Имитация ответа от AI
-    setTimeout(async () => {
-      const aiResponse = `Это ответ на ваш вопрос: "${inputValue}". В реальном приложении здесь будет ответ от нейронной сети.`;
+      // 1. Сохраняем сообщение пользователя в бэкенд
+      const savedMessage = await dialogService.sendMessage(
+        activeChatId, 
+        messageText, 
+        'user'
+      );
       
-      const botMessage = {
-        id: Date.now() + 1,
-        type: "output",
-        content: aiResponse,
-        showReportButton: true,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Обновляем локально
+      // 2. Обновляем локальное состояние
       setChats(prev => prev.map(chat => 
         chat.id === activeChatId 
-          ? { ...chat, messages: [...chat.messages, botMessage] }
+          ? { 
+              ...chat, 
+              messages: [...chat.messages, {
+                id: savedMessage.id,
+                type: "input",
+                content: savedMessage.text,
+                showReportButton: false,
+                timestamp: savedMessage.created_at,
+              }]
+            } 
           : chat
       ));
       
-      try {
-        // Отправляем ответ AI в бэкенд
-        if (currentUser?.id) {
-          await dialogService.sendMessage(activeChatId, aiResponse, 'ai');
+      // 3. Обновляем localStorage
+      updateLocalStorage();
+      
+      // 4. Имитация ответа AI
+      setTimeout(async () => {
+        const aiResponse = `Это ответ на ваш вопрос: "${messageText}". В реальном приложении здесь будет ответ от нейронной сети.`;
+        
+        try {
+          const aiMessage = await dialogService.sendMessage(activeChatId, aiResponse, 'ai');
+          
+          setChats(prev => prev.map(chat => 
+            chat.id === activeChatId 
+              ? { 
+                  ...chat, 
+                  messages: [...chat.messages, {
+                    id: aiMessage.id,
+                    type: "output",
+                    content: aiMessage.text,
+                    showReportButton: true,
+                    timestamp: aiMessage.created_at,
+                  }]
+                } 
+              : chat
+          ));
+          
+          updateLocalStorage();
+        } catch (error) {
+          console.error('Error saving AI response:', error);
+          
+          const botMessage = {
+            id: Date.now() + 1,
+            type: "output",
+            content: aiResponse,
+            showReportButton: true,
+            timestamp: new Date().toISOString(),
+          };
+          
+          setChats(prev => prev.map(chat => 
+            chat.id === activeChatId 
+              ? { ...chat, messages: [...chat.messages, botMessage] }
+              : chat
+          ));
+          
+          updateLocalStorage();
         }
-      } catch (error) {
-        console.error('Error sending AI response to backend:', error);
-      }
-    }, 1000);
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setError('Не удалось отправить сообщение');
+      
+      // Fallback
+      const userMessage = {
+        id: Date.now(),
+        type: "input",
+        content: messageText,
+        showReportButton: false,
+        timestamp: new Date().toISOString(),
+      };
+      
+      setChats(prev => prev.map(chat => 
+        chat.id === activeChatId 
+          ? { ...chat, messages: [...chat.messages, userMessage] }
+          : chat
+      ));
+      
+      updateLocalStorage();
+      
+      setTimeout(() => {
+        const aiResponse = `Это ответ на ваш вопрос: "${messageText}". В реальном приложении здесь будет ответ от нейронной сети.`;
+        
+        const botMessage = {
+          id: Date.now() + 1,
+          type: "output",
+          content: aiResponse,
+          showReportButton: true,
+          timestamp: new Date().toISOString(),
+        };
+        
+        setChats(prev => prev.map(chat => 
+          chat.id === activeChatId 
+            ? { ...chat, messages: [...chat.messages, botMessage] }
+            : chat
+        ));
+        
+        updateLocalStorage();
+      }, 1000);
+    }
   };
 
-  // Обработчик открытия модалки жалобы
+  // Вспомогательная функция
+  const updateLocalStorage = () => {
+    try {
+      localStorage.setItem('hrg_chats', JSON.stringify(chats));
+    } catch (error) {
+      console.error('Error updating localStorage:', error);
+    }
+  };
+
+  // Получаем активный чат
+  const activeChat = chats.find(chat => chat.id === activeChatId);
+  const messages = activeChat?.messages || [];
+
+  // Обработчики
+  const handleChatSelect = (chat) => {
+    setActiveChatId(chat.id);
+    setInputValue("");
+  };
+
   const handleReportMessage = (message) => {
     setSelectedMessage(message);
     setIsReportModalOpen(true);
   };
 
-  // Обработчик отправки жалобы
   const handleSubmitReport = (reportData) => {
     console.log("Жалоба отправлена:", reportData);
-    
-    // Временная логика
-    const existingReports = JSON.parse(localStorage.getItem('chat_reports') || '[]');
-    const newReport = {
-      ...reportData,
-      id: Date.now(),
-      chatId: activeChatId,
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    };
-    
-    existingReports.push(newReport);
-    localStorage.setItem('chat_reports', JSON.stringify(existingReports));
-    
-    alert(`Жалоба отправлена! ID: ${newReport.id}`);
+    alert(`Жалоба отправлена!`);
   };
 
-  // Обработчики без изменений
   const handleInputChange = (value) => {
     setInputValue(value);
   };
@@ -347,16 +418,47 @@ export function MainPageContainer() {
   // Функция выхода
   const handleLogout = () => {
     authService.logout();
-    navigate('/login');
+    window.location.href = '/login';
   };
 
   return (
     <>
+      {error && (
+        <div style={{
+          position: 'fixed',
+          top: '10px',
+          right: '10px',
+          background: 'var(--secondary-red-1)',
+          color: 'white',
+          padding: '1rem',
+          borderRadius: '5px',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem'
+        }}>
+          <span>{error}</span>
+          <button 
+            onClick={() => setError(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '1.6rem'
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      
       <MainPage
         inputValue={inputValue}
         messages={messages}
         chats={chats}
         currentUser={currentUser}
+        userName={userName}
         activeChatId={activeChatId}
         onInputChange={handleInputChange}
         onSendMessage={handleSendMessage}
@@ -367,7 +469,7 @@ export function MainPageContainer() {
         onRenameChat={handleRenameChat}
         onDeleteChat={handleDeleteChat}
         onLogout={handleLogout}
-        isLoading={loadingBackendData}
+        isLoading={isLoading}
       />
 
       <ReportMessageModal
