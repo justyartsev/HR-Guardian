@@ -35,6 +35,7 @@ class QueryResponse(BaseModel):
     response: str  # сгенерированный ответ
     sources: List[dict]  # использованные источники
     dialog_id: int  # ID диалога
+    document_id: Optional[int] = None  # ID документа для скачивания если просил полный
 
 
 # ====================== ENDPOINTS ======================
@@ -135,7 +136,8 @@ async def process_query(
     return QueryResponse(
         response=rag_data.get("response", ""),
         sources=sources_data,
-        dialog_id=dialog.id
+        dialog_id=dialog.id,
+        document_id=rag_data.get("document_id")  # Передаём ID документа если RAG его вернула
     )
 
 
