@@ -1,26 +1,22 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { KnowledgeBasePage } from "./KnowledgeBasePage";
-import { EditDocumentModal } from "../../components/Modal/EditDocumentModal";
+import { QueryLogPage } from "./QueryLogPage";
 import { DeleteDocumentModal } from "../../components/Modal/DeleteDocumentModal";
-import { AddDocumentModal } from "../../components/Modal/AddDocumentModal";
 import { dialogService } from "../../services/dialogService";
 import { authService } from "../../services/authService";
 //import { useUser } from "../../contexts/UserContext";
 
-export function KnowledgeBasePageContainer() {
+export function QueryLogPageContainer() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState(() => {
     return authService.getCurrentUser();
   });
-
-  // Состояния для документов
-  const [documents, setDocuments] = useState([
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 1 },
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 2 },
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 3 },
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 4 },
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 5 },
+  // Состояния для жалоб
+  const [complaints, setComplaints] = useState([
+    { name: "Жалоба №124", date: "21.06.2025", user: "Петров Петр Петрович", id: 1 },
+    { name: "Жалоба №124", date: "21.06.2025", user: "Петров Петр Петрович", id: 2 },
+    { name: "Жалоба №124", date: "21.06.2025", user: "Петров Петр Петрович", id: 3 },
+    { name: "Жалоба №124", date: "21.06.2025", user: "Петров Петр Петрович", id: 4 },
   ]);
 
   // Получаем текущего пользователя
@@ -51,33 +47,29 @@ export function KnowledgeBasePageContainer() {
     return user;
   });*/
 
-
   // Состояние для чатов
   const [chats, setChats] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [selectedDocument, setSelectedDocument] = useState(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   // Функция для форматирования имени пользователя
-const formatUserName = (user) => {
-  if (!user) return "Гость";
-  
-  if (user.firstName && user.lastName) {
-    return `${user.lastName} ${user.firstName}`;
-  }
-  
-  if (user.username) {
-    return user.username;
-  }
-  
-  return user.email?.split('@')[0] || "Пользователь";
-};
+    const formatUserName = (user) => {
+    if (!user) return "Гость";
+    
+    if (user.firstName && user.lastName) {
+      return `${user.lastName} ${user.firstName}`;
+    }
+    
+    if (user.username) {
+      return user.username;
+    }
+    
+    return user.email?.split('@')[0] || "Пользователь";
+  };
 
   const userName = formatUserName(currentUser);
-
 
 
 
@@ -94,7 +86,7 @@ const formatUserName = (user) => {
         setCurrentUser(user);
         
         // Загружаем чаты
-          try {
+      try {
           const dialogs = await dialogService.getUserDialogs(user.id);
           if (dialogs && dialogs.length > 0) {
             const sortedDialogs = [...dialogs].sort((a, b) => 
@@ -200,66 +192,29 @@ const formatUserName = (user) => {
   const handleTabChange = (tab) => {
     if (tab === "chat") {
       navigate("/chat");
-    } else if (tab === "queries") {
-      navigate("/query-log");
+    } else if (tab === "knowledge") {
+      navigate("/knowledge-base");
     }
   };
 
-  // Обработчик открытия модалки редактирования
-  const handleEditDocument = (document) => {
-    setSelectedDocument(document);
-    setIsEditModalOpen(true);
-  };
-
   // Обработчик открытия модалки удаления
-  const handleDeleteDocument = (document) => {
-    setSelectedDocument(document);
+  const handleDeleteComplaint = (complaint) => {
+    setSelectedComplaint(complaint);
     setIsDeleteModalOpen(true);
   };
 
-  // Обработчик открытия модалки добавления
-  const handleAddDocument = () => {
-    setIsAddModalOpen(true);
-  };
-
-  // Обработчик сохранения изменений документа
-  const handleSaveDocument = (updatedDocument) => {
-    console.log("Сохранение документа:", updatedDocument);
-    
-    setDocuments(prev => prev.map(doc => 
-      doc.id === updatedDocument.id 
-        ? { 
-            ...doc, 
-            ...updatedDocument
-          } 
-        : doc
-    ));
-    
-    alert(`Документ "${updatedDocument.name}" обновлен!`);
-  };
-
-  // Обработчик добавления нового документа
-  const handleAddNewDocument = (newDocument) => {
-    console.log("Добавление нового документа:", newDocument);
-    
-    // Добавляем новый документ в начало списка
-    setDocuments(prev => [newDocument, ...prev]);
-    
-    alert(`Документ "${newDocument.name}" успешно добавлен!`);
-  };
-
   // Обработчик подтверждения удаления
-  const handleConfirmDelete = (document) => {
-    console.log("Удаление документа:", document);
+  const handleConfirmDelete = (complaint) => {
+    console.log("Удаление жалобы:", complaint);
     
-    setDocuments(prev => prev.filter(doc => doc.id !== document.id));
-    alert(`Документ "${document.name}" удален!`);
+    setComplaints(prev => prev.filter(item => item.id !== complaint.id));
+    alert(`Жалоба "${complaint.name}" удалена!`);
   };
 
   return (
     <>
-      <KnowledgeBasePage
-        documents={documents}
+      <QueryLogPage
+        complaints={complaints}
         userInfo={{
           username: userName,
           ...currentUser
@@ -270,33 +225,16 @@ const formatUserName = (user) => {
         onChatSelect={handleChatSelect}
         onRenameChat={handleRenameChat}
         onDeleteChat={handleDeleteChat}
-        onEditDocument={handleEditDocument}
-        onDeleteDocument={handleDeleteDocument}
-        onAddDocument={handleAddDocument}
+        onDeleteComplaint={handleDeleteComplaint}
         isLoading={isLoading}
       />
 
-      {/* Модальное окно редактирования документа */}
-      <EditDocumentModal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        document={selectedDocument}
-        onSave={handleSaveDocument}
-      />
-
-      {/* Модальное окно удаления документа */}
+      {/* Модальное окно удаления жалобы */}
       <DeleteDocumentModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        document={selectedDocument}
+        document={selectedComplaint}
         onConfirm={handleConfirmDelete}
-      />
-
-      {/* Модальное окно добавления документа */}
-      <AddDocumentModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onAdd={handleAddNewDocument}
       />
     </>
   );

@@ -1,53 +1,120 @@
-import styled from "styled-components"
-import { FiMoreHorizontal } from "react-icons/fi";
-import { Menu, MenuItem} from '@szhsin/react-menu';
-import '@szhsin/react-menu/dist/transitions/zoom.css';
-import { useCallback } from "react";
+// components/ContextMenu/contextMenu.jsx
+import { useState, useEffect, useRef } from "react";
+import styled from "styled-components";
+import { FiEdit, FiTrash2, FiMoreVertical } from "react-icons/fi";
 
+const MenuButton = styled.button`
+  background: none;
+  border: none;
+  color: var(--primary-white-1);
+  cursor: pointer;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  &:hover {
+    color: var(--secondary-orange-1);
+  }
+`;
 
-const CustomMenu = styled(Menu)`
-    .szh-menu{
-        z-index: 1000;
-    }
-    .szh-menu__item--hover{
-        text-decoration: underline;
-    }
-    ul{
-        background-color: var(--primary-black-3);
-        font-size: 1.6rem;
-        border-radius: 0px 15px 15px 15px;
-        top: 5rem;
-        li{
-            padding: 0.5rem 1rem;
-            border-bottom: 1px solid var(--primasy-stroke-1);
-            white-space: nowrap;
-        }
-        li:last-of-type{
-            border-bottom: 0;
-        }
-    }
-`
+const MenuContainer = styled.div`
+  position: relative;
+  display: inline-block;
+`;
 
-// option = {
-//     name: "SomeName",
-//     function: function,
-// }
+const MenuDropdown = styled.div`
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background-color: var(--primary-black-2);
+  border: 1px solid var(--primasy-stroke-1);
+  border-radius: 8px;
+  min-width: 150px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+`;
 
-export default function ContextMenu({id, options, ...params}) {
-    const changeName = useCallback(async function(id) {
-        const response = await fetch();
-        return response.status
-        })
+const MenuItem = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  padding: 1rem 1.2rem;
+  background: none;
+  border: none;
+  color: var(--primary-white-1);
+  cursor: pointer;
+  font-size: 1.4rem;
+  text-align: left;
+  
+  &:hover {
+    background-color: var(--primary-black-3);
+  }
+  
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--primasy-stroke-1);
+  }
+  
+  &.danger:hover {
+    color: var(--secondary-red-1);
+  }
+`;
 
-    const deleteChat = useCallback(async function(id) {
-        const response = await fetch();
-        return response.status
-        })
+export default function ContextMenu({ id, onRename, onDelete }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
 
-    return (
-    <CustomMenu menuButton={<FiMoreHorizontal style={{position: "absolute", right: "1rem"}} size={"2.5rem"} />} transition {...params}>
-      <MenuItem onClick={() => {changeName(id)}}>Изменить название</MenuItem>
-      <MenuItem onClick={() => {deleteChat(id)}}>Удалить</MenuItem>
-    </CustomMenu>
-  )
+  const toggleMenu = (e) => {
+    e.stopPropagation();
+    setIsOpen(!isOpen);
+  };
+
+  const handleRename = (e) => {
+    e.stopPropagation();
+    if (onRename) onRename();
+    setIsOpen(false);
+  };
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    if (onDelete) onDelete();
+    setIsOpen(false);
+  };
+
+  // Закрытие меню при клике вне его
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  return (
+    <MenuContainer ref={menuRef}>
+      <MenuButton onClick={toggleMenu}>
+        <FiMoreVertical size={18} />
+      </MenuButton>
+      
+      {isOpen && (
+        <MenuDropdown>
+          <MenuItem onClick={handleRename}>
+            <FiEdit size={16} />
+            Переименовать
+          </MenuItem>
+          <MenuItem onClick={handleDelete} className="danger">
+            <FiTrash2 size={16} />
+            Удалить
+          </MenuItem>
+        </MenuDropdown>
+      )}
+    </MenuContainer>
+  );
 }
