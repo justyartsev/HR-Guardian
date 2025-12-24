@@ -3,23 +3,20 @@ services:
     container_name: hr-guardian-backend
 #    image: "imagename" #Указать ссылку на образ
     environment:
-      SECRET_KEY: beablodola
-      ALGORITHM: HS256
-      DATABASE_URL: postgresql://hr_api:hr_api_pass54321@api-database:5432/hr
-    command: --root-path /api
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@api-database:5432/${POSTGRES_DB}
+      RAG_URL: rag:9000
+    command: --root-path /api/api
     depends_on:
       api-database:
         condition: service_healthy
+    env_file:
+      - .env
 
   api-database:
     image: postgres:17
     container_name: hr-guardian-database
-    environment:
-      POSTGRES_DB: hr
-      POSTGRES_USER: hr_api
-      POSTGRES_PASSWORD: hr_api_pass54321
     ports:
-      - "10230:5432"
+      - "${DB_OPEN_PORT:-5435}:5432"
     volumes:
       - api-data:/var/lib/postgresql/data:rw
     healthcheck:
@@ -27,6 +24,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    env_file:
+      - .env
 
   gateway:
     image: nginx:stable-alpine
@@ -34,34 +33,38 @@ services:
     volumes:
       - ./.nginx/:/etc/nginx/conf.d/
     ports:
-      - "10000:80"
+      - "${APP_PORT:-80}:80"
     command: nginx -g "daemon off;"
     depends_on:
       - backend
       - frontend
       - rag
       - ollama
+    env_file:
+      - .env
 
   frontend:
-    environment:
-      - API_URL=127.0.0.1:10000
-    image: olekkm/hr-guardian-frontend:latest
+#    image: "imagename" #Указать ссылку на образ
     container_name: hr-guardian-frontend
+    env_file:
+      - .env
 
   rag:
     container_name: hr-guardian-rag
-    environment:
-      - name=value
 #    image: "imagename" #Указать ссылку на образ
-    command: --host 0.0.0.0 --port 9000 --root-path /rag
+    command: --host 0.0.0.0 --port 9000 --root-path /api/rag
     volumes:
       - vectordb:/app/vectordb:rw
+    env_file:
+      - .env
 
   ollama:
 #    image: "imagename" #Указать ссылку на образ
     container_name: ollama
     volumes:
       - ollama:/root/.ollama:rw
+    env_file:
+      - .env
 
 volumes:
   api-data:
