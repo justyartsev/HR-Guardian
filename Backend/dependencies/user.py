@@ -5,6 +5,8 @@ from core.config import settings
 from database import get_db
 from sqlalchemy.orm import Session
 from models.user import User
+from sqlalchemy.orm import Session
+from fastapi import HTTPException, status
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
@@ -58,3 +60,24 @@ def check_resource_ownership(resource_user_id: int, current_user: User):
             status_code=403, 
             detail="Access denied: this resource belongs to another user"
         )
+
+def promote_user_to_hr(user_id: int, db: Session) -> User:
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    if user.role == "hr":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already HR"
+        )
+
+    user.role = "hr"
+    db.commit()
+    db.refresh(user)
+
+    return user
