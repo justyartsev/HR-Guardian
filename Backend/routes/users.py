@@ -29,3 +29,9 @@ def promote_to_hr(
         "user_id": user.id,
         "new_role": user.role
     }
+
+@router.get("/me/username")
+def get_my_username(current_user: User = Depends(get_current_user)):
+    return {
+        "username": current_user.username
+    }
