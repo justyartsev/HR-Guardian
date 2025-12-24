@@ -142,8 +142,15 @@ const ButtonGroup = styled.div`
 export function AddDocumentModal({ 
   isOpen, 
   onClose, 
-  onAdd 
+  onAdd,
+  currentUser
 }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    content: '',
+    owner: currentUser?.username || 'Неизвестно'
+  });
   const [documentName, setDocumentName] = useState("");
   const [effectiveDate, setEffectiveDate] = useState("");
   const [responsiblePerson, setResponsiblePerson] = useState("");

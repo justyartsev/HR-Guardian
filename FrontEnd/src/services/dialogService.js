@@ -1,31 +1,44 @@
-// src/services/dialogService.js
 import api from './api';
 
 export const dialogService = {
   // Создать диалог
   async createDialog(title, userId) {
     try {
+      console.log('Creating dialog for user:', userId);
       const response = await api.post('/dialogs/', {
-        title: title || `Новый чат ${new Date().toLocaleDateString()}`,
         user_id: userId,
+        title: title || `Новый чат ${new Date().toLocaleDateString()}`,
       });
       return response.data;
     } catch (error) {
       console.error('Error creating dialog:', error);
-      throw error;
+      throw new Error(`Не удалось создать чат: ${error.response?.data?.detail || error.message}`);
     }
   },
 
   // Получить диалоги пользователя
   async getUserDialogs(userId) {
     try {
+      console.log('Getting dialogs for user:', userId);
       const response = await api.get(`/dialogs/user/${userId}`);
       return response.data || [];
     } catch (error) {
       console.error('Error getting dialogs:', error);
+      // Если 404 - значит у пользователя нет диалогов
       if (error.response?.status === 404) {
         return [];
       }
+      throw new Error(`Не удалось загрузить чаты: ${error.message}`);
+    }
+  },
+
+  // Получить диалог по ID
+  async getDialog(dialogId) {
+    try {
+      const response = await api.get(`/dialogs/${dialogId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting dialog:', error);
       throw error;
     }
   },
@@ -37,7 +50,7 @@ export const dialogService = {
       return response.data;
     } catch (error) {
       console.error('Error deleting dialog:', error);
-      throw error;
+      throw new Error(`Не удалось удалить чат: ${error.response?.data?.detail || error.message}`);
     }
   },
 
@@ -55,14 +68,15 @@ export const dialogService = {
   // Отправить сообщение
   async sendMessage(dialogId, text, sender = 'user') {
     try {
+      console.log('Sending message to dialog:', dialogId);
       const response = await api.post(`/dialogs/${dialogId}/messages`, {
+        sender,
         text,
-        sender: sender // 'user' или 'ai'
       });
       return response.data;
     } catch (error) {
       console.error('Error sending message:', error);
-      throw error;
+      throw new Error(`Не удалось отправить сообщение: ${error.response?.data?.detail || error.message}`);
     }
   },
 

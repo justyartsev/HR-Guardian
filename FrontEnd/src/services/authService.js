@@ -12,7 +12,7 @@ export const authService = {
         password: userData.password,
         first_name: userData.firstName || '',
         last_name: userData.lastName || '',
-        role: 'employee',
+        role: 'hr',
       });
       
       console.log('Registration successful:', response.data);
