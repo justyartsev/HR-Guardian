@@ -12,9 +12,8 @@ def get_me(current_user: User = Depends(get_current_user)):
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from Backend.database import get_db
-from Backend.dependencies.user import get_current_user
-from Backend.models import User
+from database import get_db
+from dependencies.user import get_current_user
 from dependencies.user import promote_user_to_hr
 
 router = APIRouter(prefix="/users", tags=["users"])
