@@ -15,13 +15,14 @@ def create_directories():
     for dir_path in dirs:
         Path(dir_path).mkdir(parents=True, exist_ok=True)
 
-# Создаём БД схему и инициализируем директории
-Base.metadata.create_all(bind=engine)
-create_directories()
+
 
 # Lifespan event handlers (новый способ вместо @app.on_event)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
+    Base.metadata.create_all(bind=engine)
+    create_directories()
     # Startup
     start_scheduler()
     yield
