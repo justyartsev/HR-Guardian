@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+from routes import users
 from database import engine, Base
 from routes import auth, document, dialog, query, feedback
 from core.scheduler import start_scheduler, stop_scheduler
@@ -36,6 +37,7 @@ app.include_router(document.router)
 app.include_router(dialog.router)
 app.include_router(query.router)
 app.include_router(feedback.router)
+app.include_router(users.router)
 from routes import rag_callback
 app.include_router(rag_callback.router)
 
