@@ -63,7 +63,7 @@ export function KnowledgeBasePageContainer() {
 
   // Функция для форматирования имени пользователя
 const formatUserName = (user) => {
-  if (!user) return "Гость";
+  if (!user) return "Пользователь";
   
   if (user.firstName && user.lastName) {
     return `${user.lastName} ${user.firstName}`;

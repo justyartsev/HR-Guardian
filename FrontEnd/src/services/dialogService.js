@@ -80,15 +80,13 @@ export const dialogService = {
     }
   },
 
-  // Обновить заголовок диалога (нужен эндпоинт в бэкенде)
+  // Обновить заголовок диалога
   async updateDialogTitle(dialogId, title) {
     try {
-      // TODO: Добавить когда будет эндпоинт PATCH /dialogs/{id}
-      // const response = await api.patch(`/dialogs/${dialogId}`, { title });
-      // return response.data;
-      
-      // Пока возвращаем заглушку
-      return { id: dialogId, title };
+      const response = await api.patch(`/dialogs/${dialogId}/title`, {
+        title: title
+      });
+      return response.data;
     } catch (error) {
       console.error('Error updating dialog title:', error);
       throw error;

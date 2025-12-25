@@ -56,7 +56,7 @@ export function QueryLogPageContainer() {
 
   // Функция для форматирования имени пользователя
     const formatUserName = (user) => {
-    if (!user) return "Гость";
+    if (!user) return "Пользователь";
     
     if (user.firstName && user.lastName) {
       return `${user.lastName} ${user.firstName}`;
@@ -70,6 +70,8 @@ export function QueryLogPageContainer() {
   };
 
   const userName = formatUserName(currentUser);
+  console.log("currentUser:", currentUser);
+  console.log("formatted userName:", userName);
 
 
 

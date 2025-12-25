@@ -148,7 +148,13 @@ export function EditDocumentModal({
 }) {
   const [effectiveDate, setEffectiveDate] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
-
+  const [formData, setFormData] = useState({
+  name: document?.name || '',
+  description: document?.description || '',
+  content: document?.content || '',
+  date: document?.date || '',
+  owner: document?.owner || ''
+  });
   // Инициализируем дату при открытии модалки
   useEffect(() => {
     if (isOpen && document?.date) {

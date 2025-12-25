@@ -4,6 +4,7 @@ import { MainPage } from "./MainPage";
 import { ReportMessageModal } from "../../components/Modal/ReportMessageModal";
 import { dialogService } from "../../services/dialogService";
 import { authService } from "../../services/authService";
+import { queryService } from "../../services/queryService";
 
 // Функция для форматирования имени пользователя
 const formatUserName = (user) => {
@@ -86,7 +87,15 @@ export function MainPageContainer() {
     try {
       const dialogs = await dialogService.getUserDialogs(userId);
       
+      // ДИАГНОСТИКА: логируем структуру данных
+      console.log('=== LOADING DIALOGS ===');
+      console.log('User ID:', userId);
+      console.log('Raw dialogs from backend:', dialogs);
+      
       if (dialogs && dialogs.length > 0) {
+        console.log('First dialog structure:', dialogs[0]);
+        console.log('Dialog keys:', Object.keys(dialogs[0]));
+        
         // Сортируем диалоги по дате создания (новые сверху)
         const sortedDialogs = [...dialogs].sort((a, b) => 
           new Date(b.created_at) - new Date(a.created_at)
@@ -97,20 +106,31 @@ export function MainPageContainer() {
         const storedChatsMap = new Map(storedChats.map(chat => [chat.id, chat]));
         
         // Форматируем чаты, сохраняя переименованные названия
-        const formattedChats = sortedDialogs.map(dialog => {
+        const formattedChats = await Promise.all(sortedDialogs.map(async (dialog) => {
           const storedChat = storedChatsMap.get(dialog.id);
-          return {
-            id: dialog.id,
-            name: storedChat?.name || dialog.title || `Чат ${getNextChatNumber([])}`,
-            messages: dialog.messages?.map(msg => ({
+          
+          // Загружаем сообщения для каждого диалога
+          let messages = [];
+          try {
+            const messagesData = await dialogService.getMessages(dialog.id);
+            messages = messagesData.map(msg => ({
               id: msg.id,
               type: msg.sender === 'user' ? 'input' : 'output',
               content: msg.text,
               showReportButton: msg.sender !== 'user',
               timestamp: msg.created_at,
-            })) || [],
+            }));
+            console.log(`Loaded ${messages.length} messages for dialog ${dialog.id}`);
+          } catch (msgError) {
+            console.error(`Error loading messages for dialog ${dialog.id}:`, msgError);
+          }
+          
+          return {
+            id: dialog.id,
+            name: storedChat?.name || dialog.title || `Чат ${getNextChatNumber([])}`,
+            messages: messages,
           };
-        });
+        }));
         
         setChats(formattedChats);
         setActiveChatId(formattedChats[0]?.id || null);
@@ -119,6 +139,7 @@ export function MainPageContainer() {
         localStorage.setItem('hrg_chats', JSON.stringify(formattedChats));
       } else {
         // Нет диалогов - пустой список
+        console.log('No dialogs found for user');
         setChats([]);
         setActiveChatId(null);
         localStorage.removeItem('hrg_chats');
@@ -162,9 +183,11 @@ export function MainPageContainer() {
       
       const newDialog = await dialogService.createDialog(chatName, currentUser.id);
       
+      console.log('New dialog response:', newDialog);
+      
       const newChat = {
-        id: newDialog.id,
-        name: chatName,
+        id: newDialog.id || newDialog.dialog_id,
+        name: newDialog.title || chatName,
         messages: [],
       };
       
@@ -266,6 +289,8 @@ export function MainPageContainer() {
         'user'
       );
       
+      console.log('Saved user message:', savedMessage);
+      
       // 2. Обновляем локальное состояние
       setChats(prev => prev.map(chat => 
         chat.id === activeChatId 
@@ -285,92 +310,96 @@ export function MainPageContainer() {
       // 3. Обновляем localStorage
       updateLocalStorage();
       
-      // 4. Имитация ответа AI
-      setTimeout(async () => {
-        const aiResponse = `Это ответ на ваш вопрос: "${messageText}". В реальном приложении здесь будет ответ от нейронной сети.`;
-        
-        try {
-          const aiMessage = await dialogService.sendMessage(activeChatId, aiResponse, 'ai');
-          
-          setChats(prev => prev.map(chat => 
-            chat.id === activeChatId 
-              ? { 
-                  ...chat, 
-                  messages: [...chat.messages, {
-                    id: aiMessage.id,
-                    type: "output",
-                    content: aiMessage.text,
-                    showReportButton: true,
-                    timestamp: aiMessage.created_at,
-                  }]
-                } 
-              : chat
-          ));
-          
-          updateLocalStorage();
-        } catch (error) {
-          console.error('Error saving AI response:', error);
-          
-          const botMessage = {
-            id: Date.now() + 1,
-            type: "output",
-            content: aiResponse,
-            showReportButton: true,
-            timestamp: new Date().toISOString(),
-          };
-          
-          setChats(prev => prev.map(chat => 
-            chat.id === activeChatId 
-              ? { ...chat, messages: [...chat.messages, botMessage] }
-              : chat
-          ));
-          
-          updateLocalStorage();
-        }
-      }, 1000);
+ // 3. ПОЛУЧАЕМ РЕАЛЬНЫЙ ОТВЕТ ОТ НЕЙРОННОЙ СЕТИ
+    try {
+      console.log('Sending query to AI service...');
+      const aiResponse = await queryService.processQuery(activeChatId, messageText);
       
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setError('Не удалось отправить сообщение');
+      console.log('AI response received:', aiResponse);
       
-      // Fallback
-      const userMessage = {
-        id: Date.now(),
-        type: "input",
-        content: messageText,
-        showReportButton: false,
-        timestamp: new Date().toISOString(),
-      };
+      // Сохраняем ответ AI в бэкенд
+      const aiMessage = await dialogService.sendMessage(
+        activeChatId, 
+        aiResponse.answer || aiResponse.text || aiResponse, 
+        'ai'
+      );
       
+      // Обновляем UI с ответом AI
       setChats(prev => prev.map(chat => 
         chat.id === activeChatId 
-          ? { ...chat, messages: [...chat.messages, userMessage] }
+          ? { 
+              ...chat, 
+              messages: [...chat.messages, {
+                id: aiMessage.id,
+                type: "output",
+                content: aiMessage.text,
+                showReportButton: true,
+                timestamp: aiMessage.created_at,
+              }]
+            } 
           : chat
       ));
       
       updateLocalStorage();
       
-      setTimeout(() => {
-        const aiResponse = `Это ответ на ваш вопрос: "${messageText}". В реальном приложении здесь будет ответ от нейронной сети.`;
-        
-        const botMessage = {
-          id: Date.now() + 1,
-          type: "output",
-          content: aiResponse,
-          showReportButton: true,
-          timestamp: new Date().toISOString(),
-        };
-        
-        setChats(prev => prev.map(chat => 
-          chat.id === activeChatId 
-            ? { ...chat, messages: [...chat.messages, botMessage] }
-            : chat
-        ));
-        
-        updateLocalStorage();
-      }, 1000);
+    } catch (aiError) {
+      console.error('Error getting AI response:', aiError);
+      
+      // Fallback: стандартный ответ
+      const fallbackResponse = `Извините, не удалось получить ответ от нейронной сети. Ошибка: ${aiError.message}`;
+      
+      const aiMessage = await dialogService.sendMessage(
+        activeChatId, 
+        fallbackResponse, 
+        'ai'
+      );
+      
+      setChats(prev => prev.map(chat => 
+        chat.id === activeChatId 
+          ? { 
+              ...chat, 
+              messages: [...chat.messages, {
+                id: aiMessage.id,
+                type: "output",
+                content: aiMessage.text,
+                showReportButton: true,
+                timestamp: aiMessage.created_at,
+              }]
+            } 
+          : chat
+      ));
+      
+      updateLocalStorage();
     }
-  };
+    
+  } catch (error) {
+    console.error('Error in send message flow:', error);
+        // Если это 401, просто покажем ошибку
+    if (error.response?.status === 401) {
+      setError(`Ошибка авторизации (401) при запросе к: ${error.config?.url}`);
+    } else {
+      setError('Не удалось отправить сообщение');
+    }
+   
+    
+    // Fallback логика
+    const userMessage = {
+      id: Date.now(),
+      type: "input",
+      content: messageText,
+      showReportButton: false,
+      timestamp: new Date().toISOString(),
+    };
+    
+    setChats(prev => prev.map(chat => 
+      chat.id === activeChatId 
+        ? { ...chat, messages: [...chat.messages, userMessage] }
+        : chat
+    ));
+    
+    updateLocalStorage();
+  }
+};
 
   // Вспомогательная функция
   const updateLocalStorage = () => {
@@ -381,14 +410,38 @@ export function MainPageContainer() {
     }
   };
 
-  // Получаем активный чат
-  const activeChat = chats.find(chat => chat.id === activeChatId);
-  const messages = activeChat?.messages || [];
-
-  // Обработчики
-  const handleChatSelect = (chat) => {
+  // Обработчик выбора чата с загрузкой сообщений
+  const handleChatSelect = async (chat) => {
+    console.log('Selecting chat:', chat.id);
     setActiveChatId(chat.id);
     setInputValue("");
+    
+    // Загружаем сообщения для выбранного чата
+    if (chat.id) {
+      try {
+        console.log('Loading messages for chat:', chat.id);
+        const messages = await dialogService.getMessages(chat.id);
+        console.log('Loaded messages:', messages);
+        
+        // Обновляем чат с загруженными сообщениями
+        setChats(prev => prev.map(c => 
+          c.id === chat.id 
+            ? { 
+                ...c, 
+                messages: messages.map(msg => ({
+                  id: msg.id,
+                  type: msg.sender === 'user' ? 'input' : 'output',
+                  content: msg.text,
+                  showReportButton: msg.sender !== 'user',
+                  timestamp: msg.created_at,
+                }))
+              } 
+            : c
+        ));
+      } catch (error) {
+        console.error('Error loading messages:', error);
+      }
+    }
   };
 
   const handleReportMessage = (message) => {
@@ -420,6 +473,10 @@ export function MainPageContainer() {
     authService.logout();
     window.location.href = '/login';
   };
+
+  // Получаем активный чат
+  const activeChat = chats.find(chat => chat.id === activeChatId);
+  const messages = activeChat?.messages || [];
 
   return (
     <>

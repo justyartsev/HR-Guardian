@@ -1,3 +1,4 @@
+// src/services/authService.js
 import api from './api';
 
 export const authService = {
@@ -9,48 +10,60 @@ export const authService = {
         username: userData.username,
         email: userData.email,
         password: userData.password,
-        first_name: userData.firstName,  // Добавляем имя и фамилию в запрос
-        last_name: userData.lastName,
-        role: 'employee',
+        first_name: userData.firstName || '',
+        last_name: userData.lastName || '',
+        role: 'hr',
       });
       
-      console.log('Registration successful');
+      console.log('Registration successful:', response.data);
       
       // После регистрации автоматически логинимся
-      const loginResult = await this.login(userData.email, userData.password);
+      const loginResult = await this.login({
+        email: userData.email,
+        password: userData.password
+      });
       
-      // Сохраняем полные данные пользователя
-      const userInfo = {
-        ...loginResult.user,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        username: userData.username
-      };
-      
-      // Сохраняем в localStorage
-      localStorage.setItem('user', JSON.stringify(userInfo));
-      
-      return {
-        ...loginResult,
-        user: userInfo
-      };
+      return loginResult;
       
     } catch (error) {
-      console.error('Registration failed:', error);
+      console.error('Registration failed:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
       throw error;
     }
   },
 
-  async login(email, password) {
+  async login(credentials) {
     try {
-      console.log('Login attempt:', email);
+      console.log('Login called with credentials:', credentials);
+      
+      // Правильно извлекаем email и password
+      let email, password;
+      
+      if (typeof credentials === 'object' && credentials !== null) {
+        // Если передан объект {email: "...", password: "..."}
+        email = credentials.email;
+        password = credentials.password;
+      } else {
+        // Если передан email как строка и password как второй аргумент (устаревший формат)
+        email = credentials;
+        password = arguments[1];
+      }
+      
+      console.log('Extracted email:', email, 'password:', password ? '***' : 'undefined');
+      
+      if (!email || !password) {
+        throw new Error('Email and password are required');
+      }
       
       const response = await api.post('/auth/login', {
-        email,
-        password,
+        email: email,
+        password: password,
       });
       
-      console.log('Login response received');
+      console.log('Login response:', response.data);
       
       if (!response.data.access_token) {
         throw new Error('No access token in response');
@@ -59,12 +72,22 @@ export const authService = {
       // Сохраняем токен
       localStorage.setItem('access_token', response.data.access_token);
       
-      // Получаем данные пользователя
-      const userInfo = await this.getUserInfo();
+      // Декодируем токен для получения данных пользователя
+      const token = response.data.access_token;
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(window.atob(base64));
       
-      if (!userInfo) {
-        throw new Error('Could not get user information');
-      }
+      const userInfo = {
+        id: parseInt(payload.sub),
+        username: payload.username || '',
+        email: payload.email || '',
+        firstName: payload.first_name || '',
+        lastName: payload.last_name || '',
+        role: payload.role || 'employee',
+      };
+      
+      console.log('Decoded user info:', userInfo);
       
       // Сохраняем пользователя
       localStorage.setItem('user', JSON.stringify(userInfo));
@@ -75,59 +98,33 @@ export const authService = {
       };
       
     } catch (error) {
-      console.error('Login failed:', error);
-      // Очищаем на случай частичного успеха
+      console.error('Login failed:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url
+      });
+      
       localStorage.removeItem('access_token');
       localStorage.removeItem('user');
-      throw error;
+      
+      // Бросаем понятную ошибку для UI
+      if (error.response?.data?.detail) {
+        throw new Error(error.response.data.detail);
+      } else if (error.message) {
+        throw new Error(error.message);
+      } else {
+        throw new Error('Ошибка входа. Проверьте email и пароль.');
+      }
     }
   },
 
-  // Новый метод: получение информации о пользователе с бэкенда
   async getUserInfo() {
     try {
-      // Пока нет эндпоинта /auth/me, используем то что есть
       const token = localStorage.getItem('access_token');
       if (!token) return null;
       
       // Декодируем JWT токен
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-      
-      const userId = parseInt(payload.sub);
-      if (!userId) return null;
-      
-      // Пробуем получить из localStorage
-      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-      
-      return {
-        id: userId,
-        username: payload.username || storedUser.username || '',
-        email: payload.email || storedUser.email || '',
-        firstName: payload.first_name || storedUser.firstName || '',
-        lastName: payload.last_name || storedUser.lastName || '',
-        role: payload.role || storedUser.role || 'employee',
-      };
-    } catch (error) {
-      console.error('Error getting user info:', error);
-      return null;
-    }
-  },
-
-  // Получение текущего пользователя
-  getCurrentUser() {
-    try {
-      // Пытаемся получить из localStorage
-      const userStr = localStorage.getItem('user');
-      if (userStr) {
-        return JSON.parse(userStr);
-      }
-      
-      // Если нет в localStorage, пытаемся декодировать из токена
-      const token = localStorage.getItem('access_token');
-      if (!token) return null;
-      
       const base64Url = token.split('.')[1];
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const payload = JSON.parse(window.atob(base64));
@@ -141,36 +138,83 @@ export const authService = {
         role: payload.role || 'employee',
       };
     } catch (error) {
+      console.error('Error getting user info:', error);
+      return null;
+    }
+  },
+
+  getCurrentUser() {
+    try {
+      // Пытаемся получить из localStorage
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        console.log('Retrieved user from localStorage:', user);
+        return user;
+      }
+      
+      // Если нет в localStorage, пытаемся декодировать из токена
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        console.log('No token found');
+        return null;
+      }
+      
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(window.atob(base64));
+      
+      const user = {
+        id: parseInt(payload.sub),
+        username: payload.username || '',
+        email: payload.email || '',
+        firstName: payload.first_name || '',
+        lastName: payload.last_name || '',
+        role: payload.role || 'employee',
+      };
+      
+      console.log('Decoded user from token:', user);
+      return user;
+      
+    } catch (error) {
       console.error('Error getting current user:', error);
       return null;
     }
   },
 
   logout() {
+    console.log('Logging out...');
     // Очищаем все данные
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
-    // Не очищаем hrg_chats - они теперь в бэкенде
+    console.log('User logged out');
   },
 
   isAuthenticated() {
-    const token = localStorage.getItem('access_token');
-    if (!token) return false;
-    
-    // Проверяем, не истек ли токен
     try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        console.log('No token - not authenticated');
+        return false;
+      }
+      
+      // Проверяем, не истек ли токен
       const base64Url = token.split('.')[1];
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const payload = JSON.parse(window.atob(base64));
       
       // Проверяем expiry
       if (payload.exp && Date.now() >= payload.exp * 1000) {
+        console.log('Token expired');
         this.logout();
         return false;
       }
       
+      console.log('User is authenticated');
       return true;
+      
     } catch (error) {
+      console.error('Error checking authentication:', error);
       this.logout();
       return false;
     }
