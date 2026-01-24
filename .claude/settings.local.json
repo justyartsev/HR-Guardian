@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker system:*)",
+      "Bash(docker volume rm:*)",
+      "Bash(docker builder prune:*)",
+      "Bash(docker restart:*)",
+      "Bash(docker compose restart:*)",
+      "Bash(docker compose logs:*)",
+      "Bash(docker volume inspect:*)",
+      "Bash(docker compose:*)",
+      "Bash(findstr:*)",
+      "Bash(docker run:*)"
+    ]
+  }
+}

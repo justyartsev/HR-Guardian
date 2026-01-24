@@ -4,15 +4,19 @@ services:
     build:
       context: ./Backend
       dockerfile: dockerfile
+    ports:
+      - "8000:8000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@api-database:5432/${POSTGRES_DB}
-      RAG_URL: rag:9000
-    command: --root-path /api/api
+      RAG_URL: http://rag:9000
+    command: --host 0.0.0.0 --port 8000
     depends_on:
       api-database:
         condition: service_healthy
     env_file:
       - .env
+    volumes:
+      - document-files:/app/files:rw
 
   api-database:
     image: postgres:17
@@ -22,7 +26,8 @@ services:
     volumes:
       - api-data:/var/lib/postgresql/data:rw
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U hr_api -d hr" ]
+      # Используем переменные окружения для проверки подключения к БД
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -38,10 +43,14 @@ services:
       - "${APP_PORT:-80}:80"
     command: nginx -g "daemon off;"
     depends_on:
-      - backend
-      - frontend
-      - rag
-      - ollama
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+      rag:
+        condition: service_started
+      ollama:
+        condition: service_healthy
     env_file:
       - .env
 
@@ -50,6 +59,8 @@ services:
       context: ./FrontEnd/
       dockerfile: Dockerfile
     container_name: hr-guardian-frontend
+    ports:
+      - "3000:3000"
     env_file:
       - .env
 
@@ -58,25 +69,65 @@ services:
     build:
       context: ./RAG
       dockerfile: dockerfile
-    command: --host 0.0.0.0 --port 9000 --root-path /api/rag
-    volumes:
-      - vectordb:/app/vectordb:rw
+    ports:
+      - "9000:9000"
+    command: --host 0.0.0.0 --port 9000
     env_file:
       - .env
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      LLM_BASE_URL: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL}
+      RAG_BACKEND_URL: http://backend:8000
+      # Кеш для HuggingFace моделей в volume
+      HF_HOME: /app/models_cache
+      TRANSFORMERS_CACHE: /app/models_cache
+      SENTENCE_TRANSFORMERS_CACHE: /app/models_cache
+    volumes:
+      - vectordb:/app/vectordb:rw
+      - embedding-cache:/app/models_cache:rw
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
   ollama:
     build:
       context: ./CustomModel
       dockerfile: dockerfile
     container_name: ollama
+    ports:
+      - "11434:11434"
     volumes:
       - ollama:/root/.ollama:rw
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   api-data:
+    name: hr-guardian_api-data
   vectordb:
+    name: hr-guardian_vectordb
   ollama:
+    name: hr-guardian_ollama
+  embedding-cache:
+    name: hr-guardian_embedding-cache
+  document-files:
+    name: hr-guardian_document-files
+
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1450
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
 
 
