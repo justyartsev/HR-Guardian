@@ -4,33 +4,132 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from contextlib import contextmanager
 import os
+import logging
+
 try:
     import torch
 except Exception:
     torch = None
 
-DEFAULT_EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "intfloat/multilingual-e5-base")
+logger = logging.getLogger(__name__)
 
-_small_model = None
+# Путь к кэшу моделей (берем из переменных окружения или используем дефолтный)
+MODELS_CACHE_DIR = os.getenv("HF_HOME", "/app/models_cache")
+os.makedirs(MODELS_CACHE_DIR, exist_ok=True)
+
+DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-base"
+
+_cached_model = None
+_cached_model_name = None
+
+
+def _load_model(model_name: str):
+    """Загружает модель из локального кэша. Если модели нет - скачивает автоматически."""
+    global _cached_model, _cached_model_name
+
+    # Возвращаем кэшированную модель если она уже загружена
+    if _cached_model is not None and _cached_model_name == model_name:
+        logger.info(f"✅ Модель {model_name} уже загружена в память")
+        return _cached_model
+
+    logger.info(f"Загрузка модели {model_name}...")
+    logger.info(f"📁 Кэш директория: {MODELS_CACHE_DIR}")
+
+    # Проверяем есть ли модель в локальном кэше
+    model_cache_path = os.path.join(MODELS_CACHE_DIR, f"models--{model_name.replace('/', '--')}")
+    logger.info(f"🔍 Проверяем путь: {model_cache_path}")
+
+    model_exists_locally = os.path.exists(model_cache_path)
+
+    if model_exists_locally:
+        # Проверяем содержимое директории
+        try:
+            cache_contents = os.listdir(model_cache_path)
+            logger.info(f"📦 Найдены файлы в кэше: {cache_contents}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось прочитать содержимое кэша: {e}")
+    else:
+        # Проверяем что вообще есть в MODELS_CACHE_DIR
+        try:
+            if os.path.exists(MODELS_CACHE_DIR):
+                all_models = os.listdir(MODELS_CACHE_DIR)
+                logger.info(f"📂 Доступные модели в кэше: {all_models}")
+            else:
+                logger.warning(f"⚠️ Директория кэша не существует: {MODELS_CACHE_DIR}")
+                os.makedirs(MODELS_CACHE_DIR, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка чтения директории кэша: {e}")
+
+    try:
+        if model_exists_locally:
+            # Модель есть в кэше - загружаем БЕЗ проверки обновлений
+            logger.info(f"Модель найдена в кэше: {model_cache_path}")
+
+            # Включаем offline режим для HuggingFace
+            old_offline = os.environ.get("HF_HUB_OFFLINE")
+            old_datasets_offline = os.environ.get("HF_DATASETS_OFFLINE")
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["HF_DATASETS_OFFLINE"] = "1"
+
+            try:
+                model = SentenceTransformer(
+                    model_name,
+                    cache_folder=MODELS_CACHE_DIR,
+                    local_files_only=True,
+                    trust_remote_code=False
+                )
+                logger.info(f"✅ Модель {model_name} загружена из локального кэша")
+            finally:
+                # Восстанавливаем настройки
+                if old_offline is None:
+                    os.environ.pop("HF_HUB_OFFLINE", None)
+                else:
+                    os.environ["HF_HUB_OFFLINE"] = old_offline
+                if old_datasets_offline is None:
+                    os.environ.pop("HF_DATASETS_OFFLINE", None)
+                else:
+                    os.environ["HF_DATASETS_OFFLINE"] = old_datasets_offline
+        else:
+            # Модели нет - скачиваем автоматически
+            logger.info(f"Модель не найдена в кэше, начинаем скачивание из HuggingFace...")
+            model = SentenceTransformer(
+                model_name,
+                cache_folder=MODELS_CACHE_DIR,
+                trust_remote_code=False
+            )
+            logger.info(f"✅ Модель {model_name} успешно скачана и готова к использованию")
+    except Exception as e:
+        logger.error(
+            f"\n{'='*60}\n"
+            f"ОШИБКА ЗАГРУЗКИ МОДЕЛИ!\n"
+            f"{'='*60}\n"
+            f"Модель: {model_name}\n"
+            f"Кэш: {MODELS_CACHE_DIR}\n"
+            f"Ошибка: {e}\n\n"
+            f"Возможные причины:\n"
+            f"1. Нет подключения к интернету (для первой загрузки)\n"
+            f"2. Недостаточно места на диске\n"
+            f"3. Ошибка HuggingFace API\n"
+            f"{'='*60}"
+        )
+        raise RuntimeError(f"Не удалось загрузить модель {model_name}: {e}")
+
+    # Кэшируем модель в памяти
+    _cached_model = model
+    _cached_model_name = model_name
+
+    return model
 
 
 @contextmanager
 def temporary_model(model_name: str = "intfloat/multilingual-e5-base"):
-    """Загружает SentenceTransformer и освобождает память (параметры: model_name; возвращает: model)."""
-    model = SentenceTransformer(model_name)
+    """Возвращает SentenceTransformer модель (кэшируется в памяти)."""
+    model = _load_model(model_name)
     try:
         yield model
     finally:
-        try:
-            # Удаляет ссылки и очищает CUDA память
-            del model
-            if torch is not None:
-                try:
-                    torch.cuda.empty_cache()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # Модель остаётся в кэше, не удаляем её
+        pass
 
 
 def semantic_chunking_vectors(
@@ -85,24 +184,15 @@ def semantic_chunking_vectors(
 
     return chunks, chunk_embeddings
 
-def _get_small_model(model_name: str | None = None):
-    """Загружает кэшированную модель embeddings (параметры: model_name; возвращает: SentenceTransformer)."""
-    global _small_model
-    if model_name is None:
-        model_name = DEFAULT_EMBEDDING_MODEL
-    if _small_model is None:
-        _small_model = SentenceTransformer(model_name)
-    return _small_model
-
-
 def close_small_model():
     """Освобождает кэшированную модель и память CUDA (параметры: нет; возвращает: None)."""
-    global _small_model
+    global _cached_model, _cached_model_name
     try:
-        del _small_model
+        del _cached_model
     except Exception:
         pass
-    _small_model = None
+    _cached_model = None
+    _cached_model_name = None
     if torch is not None:
         try:
             torch.cuda.empty_cache()
@@ -112,5 +202,7 @@ def close_small_model():
 
 def query_vectorizing(query, model_name: str | None = None):
     """Кодирует query в embedding с префиксом query: (параметры: query, model_name; возвращает: list float)."""
-    model = _get_small_model(model_name)
+    if model_name is None:
+        model_name = DEFAULT_EMBEDDING_MODEL
+    model = _load_model(model_name)
     return model.encode(f"query: {query}", normalize_embeddings=True).tolist()
