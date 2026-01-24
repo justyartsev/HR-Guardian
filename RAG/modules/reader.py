@@ -1,10 +1,7 @@
-import os
 import io
 import re
 from pathlib import Path
 from docx import Document
-from docx.table import Table
-from docx.text.paragraph import Paragraph
 import markdown
 import fitz  # PyMuPDF
 from PIL import Image
@@ -85,6 +82,7 @@ class DocumentReader:
 
     def _read_pdf(self, file_path: str) -> str:
         """Читает PDF: текст со страниц или OCR если требуется (параметры: file_path; возвращает: str)."""
+        doc = None
         try:
             doc = fitz.open(file_path)
             full_text = ""
@@ -103,3 +101,6 @@ class DocumentReader:
         except Exception as e:
             print(f"Error reading .pdf: {e}")
             return ""
+        finally:
+            if doc:
+                doc.close()

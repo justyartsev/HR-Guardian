@@ -1,6 +1,8 @@
 # Основные веб-фреймворки
 fastapi>=0.104.0          # FastAPI сервер
 uvicorn>=0.24.0           # ASGI сервер для запуска FastAPI
+python-dotenv>=1.0.0      # Загрузка переменных окружения из .env файла
+python-multipart>=0.0.20  # Required for handling UploadFile / Form data in FastAPI
 
 # Работа с базой данных
 SQLAlchemy>=2.0.0         # ORM для PostgreSQL

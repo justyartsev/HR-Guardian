@@ -1,14 +1,17 @@
 # Синхронизация документов из Backend в RAG систему
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Query
 from pydantic import BaseModel
 from typing import Optional
-import os
 from datetime import datetime
-from modules.db_utility import sync_document_version, collection
+from modules.db_utility import sync_document_version, init_vectordb
+from modules.auth import validate_service_token
+from config import settings
 import requests
 from enum import Enum
+import io
+from pathlib import Path
 
-# Статусы синхронизации (совпадают с Backend)
+# Статусы синхронизации
 class SyncStatus(str, Enum):
     PENDING = "pending"
     SYNCING = "syncing"
@@ -22,27 +25,18 @@ router = APIRouter(prefix="/rag", tags=["RAG Sync"])
 _document_cache = {}
 
 
-def validate_service_token(service_token: str):
-    """Валидирует service_token для Backend service-to-service auth.
-    Параметры: service_token; возвращает: None или HTTPException 403."""
-    expected_token = os.getenv("RAG_SERVICE_TOKEN")
-    if not expected_token or service_token != expected_token:
-        raise HTTPException(status_code=403, detail="Invalid service token")
-
-# Pydantic модели синхронизации
-
 class SyncDocumentRequest(BaseModel):
-    """Запрос на синхронизацию (document_id, version_id, title, content, file_path, service_token)."""
-    document_id: int  # ID документа в Backend
-    version_id: int  # ID версии документа в Backend
-    title: str  # Название документа
-    content: Optional[str] = None  # Текстовое содержимое
-    file_path: Optional[str] = None  # Путь к файлу
-    service_token: str  # Обязательный токен для Backend service-to-service auth (JSON)
+    """Запрос на синхронизацию."""
+    document_id: int
+    version_id: int
+    title: str
+    content: Optional[str] = None
+    file_path: Optional[str] = None
+    service_token: str
 
 
 class SyncDocumentResponse(BaseModel):
-    """Результат синхронизации (success, document_id, version_id, chunks_created, message)."""
+    """Результат синхронизации."""
     success: bool
     document_id: int
     version_id: int
@@ -50,71 +44,88 @@ class SyncDocumentResponse(BaseModel):
     message: str
 
 
-# Эндпоинты синхронизации
-
-
 @router.post("/sync/document", response_model=SyncDocumentResponse)
 async def sync_document(
-    request: SyncDocumentRequest
+    document_id: int = Form(...),
+    version_id: int = Form(...),
+    title: str = Form(...),
+    service_token: str = Form(...),
+    callback_token: str = Form(...),
+    access_level: str = Form("all"),  # Уровень доступа: all, hr_only, admin_only
+    file: UploadFile = File(...)
 ):
-    """Синхронизирует документ версию в Chroma (параметры: request с service_token в JSON; возвращает: SyncDocumentResponse).
-    
-    """
-    #  Валидируем service token - обязательный для всех запросов от Backend
-    validate_service_token(request.service_token)
+    """Синхронизирует документ версию в Chroma"""
+    print(f"[RAG_SYNC] Document {document_id}, Version {version_id}, access_level={access_level}, File: {file.filename}")
 
     try:
+        validate_service_token(service_token)
+
+        content = await file.read()
+
+        if not content:
+            print(f"[RAG_SYNC] ERROR: File is empty")
+            raise ValueError("File is empty")
+
+        # Сохраняем во временный файл
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        temp_file_path = Path(temp_dir) / f"doc_{document_id}_v{version_id}_{file.filename}"
+
+        with open(temp_file_path, 'wb') as f:
+            f.write(content)
+
+        # Синхронизируем документ
         chunks_created = sync_document_version(
-            document_id=request.document_id,
-            version_id=request.version_id,
-            title=request.title,
-            content=request.content,
-            file_path=request.file_path
+            document_id=document_id,
+            version_id=version_id,
+            title=title,
+            content=None,
+            file_path=str(temp_file_path),
+            access_level=access_level
         )
-        
-        #  Кэшируем file_path и метаданные для доступа через Backend download эндпоинт
-        if request.file_path:
-            _document_cache[request.document_id] = {
-                "title": request.title,
-                "file_path": request.file_path,
-                "version_id": request.version_id,
-                "synced_at": datetime.now().isoformat()
-            }
-        
-        # Отправляем результат обратно в Backend (опционально)
+
+        print(f"[RAG_SYNC] OK: {chunks_created} chunks created")
+
+        # Удаляем временный файл
         try:
-            backend_url = os.getenv("RAG_BACKEND_URL", "http://localhost:8000").rstrip('/')
-            callback_token = os.getenv("RAG_CALLBACK_SECRET")
-            cb_url = f"{backend_url}/internal/rag/sync_result"
-            resp = requests.post(cb_url, json={
-                "document_id": request.document_id,
-                "version_id": request.version_id,
+            temp_file_path.unlink()
+        except Exception:
+            pass
+
+        # Отправляем callback в Backend
+        try:
+            cb_url = f"{settings.RAG_BACKEND_URL}/internal/rag/sync_result"
+            print(f"[RAG_SYNC] Sending callback to: {cb_url}", flush=True)
+
+            callback_payload = {
+                "document_id": document_id,
+                "version_id": version_id,
                 "chunks_created": chunks_created,
-                "callback_token": callback_token,
-                "sync_status": SyncStatus.SYNCED.value
-            }, timeout=10)
-            if resp.status_code != 200:
-                print(f"[RAG] Warning: backend callback returned {resp.status_code}: {resp.text}")
+                "sync_status": SyncStatus.SYNCED.value,
+                "callback_token": callback_token
+            }
+
+            resp = requests.post(cb_url, json=callback_payload, timeout=10)
+            print(f"[RAG_SYNC] Callback sent: {resp.status_code}", flush=True)
         except Exception as e:
-            print(f"[RAG] Warning: failed to call backend callback: {e}")
-        
+            print(f"[RAG_SYNC] Callback error: {e}")
+
         return SyncDocumentResponse(
-            document_id=request.document_id,
-            version_id=request.version_id,
+            success=True,
+            document_id=document_id,
+            version_id=version_id,
             chunks_created=chunks_created,
-            message="Синхронизировано успешно"
+            message="Document synced successfully"
         )
+
     except Exception as e:
+        print(f"[RAG_SYNC] ERROR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/document/{document_id}")
-async def get_document_info(
-    document_id: int
-):
-    """Получить информацию о документе из кэша RAG (параметры: document_id; возвращает: file_path и метаданные).
-
-    """
+async def get_document_info(document_id: int):
+    """Получить информацию о документе из кэша RAG."""
     if document_id in _document_cache:
         return _document_cache[document_id]
     else:
@@ -124,19 +135,60 @@ async def get_document_info(
         )
 
 
+@router.delete("/sync/document/{document_id}")
+async def delete_all_document_versions(
+    document_id: int,
+    service_token: str = Query(..., description="Service token for authentication")
+):
+    """Удаляет ВСЕ версии документа из Chroma"""
+    print(f"[RAG_DELETE] Document {document_id} (all versions)")
+
+    validate_service_token(service_token)
+
+    try:
+        collection = init_vectordb()  # Инициализируем коллекцию
+        document_id = int(document_id)
+
+        results = collection.get(
+            where={"document_id": {"$eq": document_id}}
+        )
+
+        if results["ids"]:
+            collection.delete(ids=results["ids"])
+            deleted_count = len(results["ids"])
+            print(f"[RAG_DELETE] Deleted {deleted_count} chunks")
+        else:
+            deleted_count = 0
+            print(f"[RAG_DELETE] No chunks found for document {document_id}")
+
+        return {
+            "success": True,
+            "document_id": document_id,
+            "chunks_deleted": deleted_count,
+            "message": f"Deleted {deleted_count} chunks"
+        }
+
+    except Exception as e:
+        print(f"[RAG_DELETE] ERROR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/sync/document/{document_id}/version/{version_id}")
 async def delete_document_version(
     document_id: int,
     version_id: int,
-    service_token: str 
+    service_token: str = Query(..., description="Service token for authentication")
 ):
-    """Удаляет версию документа из Chroma (параметры: document_id, version_id; возвращает: результат удаления).
+    """Удаляет конкретную версию документа из Chroma"""
+    print(f"[RAG_DELETE] Document {document_id}, Version {version_id}")
 
-    """
     validate_service_token(service_token)
-    
+
     try:
-        # Ищем все чанки этой версии в Chroma
+        collection = init_vectordb()  # Инициализируем коллекцию
+        document_id = int(document_id)
+        version_id = int(version_id)
+
         results = collection.get(
             where={
                 "$and": [
@@ -145,28 +197,50 @@ async def delete_document_version(
                 ]
             }
         )
-        
-        # Удаляем найденные чанки
+
         if results["ids"]:
             collection.delete(ids=results["ids"])
             deleted_count = len(results["ids"])
+            print(f"[RAG_DELETE] Deleted {deleted_count} chunks")
         else:
             deleted_count = 0
-        
-        # Возвращаем результат
+            print(f"[RAG_DELETE] No chunks found to delete")
+
         return {
             "success": True,
             "document_id": document_id,
             "version_id": version_id,
             "chunks_deleted": deleted_count,
-            "message": f"Удалено {deleted_count} чанков из БД"
+            "message": f"Deleted {deleted_count} chunks"
         }
-        
+
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка при удалении: {str(e)}"
-        )
+        print(f"[RAG_DELETE] ERROR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/sync/documents")
+async def list_indexed_documents(
+    service_token: str = Query(..., description="Service token for authentication")
+):
+    """Получить список всех проиндексированных документов в ChromaDB"""
+    validate_service_token(service_token)
 
+    try:
+        collection = init_vectordb()  # Инициализируем коллекцию
+        all_data = collection.get(include=["metadatas"])
+
+        document_ids = set()
+        for meta in all_data.get("metadatas", []):
+            if meta and "document_id" in meta:
+                document_ids.add(meta["document_id"])
+
+        return {
+            "success": True,
+            "total_chunks": len(all_data.get("ids", [])),
+            "document_ids": sorted(list(document_ids)),
+            "count": len(document_ids)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
