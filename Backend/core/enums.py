@@ -12,6 +12,19 @@ class UserRole(str, Enum):
     admin = "admin"        # Администратор
 
 
+class UserStatus(str, Enum):
+    """Статус учётной записи пользователя."""
+    pending = "pending"    # Ожидает подтверждения админом
+    approved = "approved"  # Подтверждён, может входить
+    rejected = "rejected"  # Отклонён админом
+
+
+class AccessLevel(str, Enum):
+    """Уровни доступа к документам."""
+    all = "all"          # Доступен всем сотрудникам
+    hr_only = "hr_only"  # Только для HR (и admin)
+
+
 class DocumentFormat(str, Enum):
     """Поддерживаемые форматы документов."""
     pdf = "pdf"      # PDF документ
@@ -25,14 +38,13 @@ class DocumentFormat(str, Enum):
 
 class SyncStatus(str, Enum):
     """Статусы синхронизации документов с RAG."""
-    PENDING = "pending"      # Ожидание активации (до effective_from)
-    SYNCING = "syncing"      # Отправляется в RAG на обработку
-    SYNCED = "synced"        # Успешно обработан RAG, готов к поиску
+    PENDING = "pending"      # Ожидает синхронизации с RAG
+    SYNCED = "synced"        # Успешно синхронизирован, доступен для поиска
     ARCHIVED = "archived"    # Архивирован (заменен новой версией)
-    ERROR = "error"          # Ошибка при обработке RAG
+    ERROR = "error"          # Ошибка при синхронизации
 
 
 class MessageRole(str, Enum):
     """Роли в диалоге (кто отправил сообщение)."""
-    user = "user"      # Пользователь
-    bot = "bot"        # Чат-бот (ассистент)
+    user = "user"           # Пользователь
+    assistant = "assistant" # Ассистент (чат-бот)

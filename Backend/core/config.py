@@ -1,29 +1,38 @@
-from pydantic_settings import BaseSettings
-from dotenv import load_dotenv
+from pathlib import Path
 import os
 
-load_dotenv()
+# Для локальной разработки загружаем .env
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # В Docker dotenv не нужен
 
-class Settings(BaseSettings):
-    
-    # === БД ===
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./hr_guardian.db")
-    
-    # === JWT ===
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "change_me_in_production")
-    ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
-    
-    # === RAG ===
-    RAG_URL: str = os.getenv("RAG_URL", "http://localhost:8001")
-    RAG_CALLBACK_SECRET: str = os.getenv("RAG_CALLBACK_SECRET", "")
-    RAG_SERVICE_TOKEN: str = os.getenv("RAG_SERVICE_TOKEN", "")  # Токен Backend→RAG
-    
-    # === ЛОГИРОВАНИЕ ===
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+# Корень Backend (где лежит main.py)
+BACKEND_ROOT = Path(__file__).parent.parent
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+
+class Settings:
+    """Настройки приложения. Работает одинаково локально и в Docker."""
+    
+    def __init__(self):
+        # === БД ===
+        self.DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./hr_guardian.db")
+        
+        # === JWT ===
+        self.SECRET_KEY = os.getenv("SECRET_KEY", "change_me_in_production")
+        self.ALGORITHM = os.getenv("ALGORITHM", "HS256")
+        
+        # === RAG ===
+        self.RAG_URL = os.getenv("RAG_URL", "http://localhost:9000")
+        self.RAG_CALLBACK_SECRET = os.getenv("RAG_CALLBACK_SECRET", "")
+        self.RAG_SERVICE_TOKEN = os.getenv("RAG_SERVICE_TOKEN", "")
+        
+        # === ФАЙЛЫ ===
+        self.FILES_ROOT = str(BACKEND_ROOT / "files" / "documents")
+        
+        # === ЛОГИРОВАНИЕ ===
+        self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 
 settings = Settings()

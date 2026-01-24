@@ -1,98 +1,81 @@
+"""
+Scheduler для автоматической активации документов.
+Каждую минуту проверяет документы с наступившей effective_from датой и отправляет их в RAG.
+"""
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy.orm import Session
 from database import SessionLocal
 from models.document import Document, DocumentVersion
 from core.enums import SyncStatus
+from core.document_sync import sync_version_to_rag
 from datetime import datetime
-
-logger = None
 
 scheduler = BackgroundScheduler()
 
 
 def activate_pending_documents():
     """
-    Scheduler: отправляет документы в RAG когда наступает effective_from
-    
-    Логика:
-    1. Ищет документы без active версии (current_version_id IS NULL)
-    2. Проверяет effective_from <= текущее время
-    3. Ищет PENDING версию (не отправляли в RAG еще)
-    4. Меняет статус на SYNCING и отправляет в RAG
-    5. RAG обработает, старые версии станут ARCHIVED
+    Находит версии документов с наступившей датой effective_from
+    и отправляет их в RAG для синхронизации.
+
+    PENDING документы могут быть отправлены повторно - RAG идемпотентен.
     """
-    import requests
-    
     db = SessionLocal()
     try:
         now = datetime.utcnow()
-        
-        # Ищем документы с наступившей effective_from и PENDING версией
-        pending_docs = db.query(Document).join(DocumentVersion).filter(
-            Document.current_version_id.is_(None),
-            Document.effective_from.isnot(None),
-            Document.effective_from <= now,
-            DocumentVersion.sync_status == SyncStatus.PENDING
+        print(f"[SCHEDULER] Running at {now}. Checking for pending documents...", flush=True)
+
+        # Ищем версии с наступившей датой effective_from и статусом PENDING
+        pending_versions = db.query(DocumentVersion).join(
+            Document,
+            DocumentVersion.document_id == Document.id
+        ).filter(
+            DocumentVersion.sync_status == SyncStatus.PENDING,
+            DocumentVersion.effective_from <= now
         ).all()
-        
-        for doc in pending_docs:
-            # Получаем PENDING версию
-            pending_version = db.query(DocumentVersion).filter(
-                DocumentVersion.document_id == doc.id,
-                DocumentVersion.sync_status == SyncStatus.PENDING
-            ).order_by(DocumentVersion.created_at).first()
-            
-            if pending_version:
-                # Меняем статус на SYNCING
-                pending_version.sync_status = SyncStatus.SYNCING
-                db.commit()
-                
-                # Отправляем в RAG
-                try:
-                    from core.config import settings
-                    requests.post(
-                        f"{settings.RAG_URL}/rag/sync/document",
-                        json={
-                            "document_id": doc.id,
-                            "version_id": pending_version.id,
-                            "title": doc.title,
-                            "file_path": pending_version.file_path
-                        },
-                        headers={"X-Role": "admin"},
-                        timeout=60
-                    )
-                    print(f"[SCHEDULER] ✓ Отправлен документ {doc.id} версия {pending_version.id} в RAG")
-                except Exception as e:
-                    # Если RAG недоступна - возвращаем статус PENDING
-                    pending_version.sync_status = SyncStatus.PENDING
-                    db.commit()
-                    print(f"[SCHEDULER] ⚠ Ошибка отправки в RAG: {e}")
-        
-        if pending_docs:
-            print(f"[SCHEDULER] Обработано {len(pending_docs)} документов")
-        
+
+        print(f"[SCHEDULER] Found {len(pending_versions)} pending versions to activate", flush=True)
+
+        if not pending_versions:
+            return
+
+        # Логируем найденные документы
+        for v in pending_versions:
+            print(f"[SCHEDULER] - Doc {v.document_id}, Version {v.id}, effective_from: {v.effective_from}", flush=True)
+
+        # Синхронизируем каждую версию с RAG
+        for version in pending_versions:
+            doc = version.document
+            print(f"[SCHEDULER] Activating doc {doc.id} (version {version.id})", flush=True)
+
+            success, message = sync_version_to_rag(db, version, doc)
+
+            if not success:
+                print(f"[SCHEDULER] WARN: Failed to sync: {message}", flush=True)
+
     except Exception as e:
+        print(f"[SCHEDULER] ERROR: {e}", flush=True)
         db.rollback()
     finally:
         db.close()
 
 
 def start_scheduler():
-    """Запустить scheduler при старте приложения"""
+    """Запустить scheduler при старте приложения."""
     if not scheduler.running:
-        # Проверяем каждый час
         scheduler.add_job(
             activate_pending_documents,
-            trigger=IntervalTrigger(hours=1),
+            trigger=IntervalTrigger(minutes=1),
             id='activate_documents',
             name='Activate pending documents',
             replace_existing=True
         )
         scheduler.start()
+        print("[SCHEDULER] Started! Running every 1 minute to activate pending documents", flush=True)
 
 
 def stop_scheduler():
-    """Остановить scheduler при выключении приложения"""
+    """Остановить scheduler при выключении приложения."""
     if scheduler.running:
         scheduler.shutdown()
+        print("[SCHEDULER] Stopped", flush=True)
