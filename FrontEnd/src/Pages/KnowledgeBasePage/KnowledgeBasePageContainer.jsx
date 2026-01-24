@@ -1,269 +1,191 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, Navigate } from "react-router-dom";
 import { KnowledgeBasePage } from "./KnowledgeBasePage";
 import { EditDocumentModal } from "../../components/Modal/EditDocumentModal";
 import { DeleteDocumentModal } from "../../components/Modal/DeleteDocumentModal";
 import { AddDocumentModal } from "../../components/Modal/AddDocumentModal";
-import { dialogService } from "../../services/dialogService";
-import { authService } from "../../services/authService";
-//import { useUser } from "../../contexts/UserContext";
+import { PreviewDocumentModal } from "../../components/Modal/PreviewDocumentModal";
+import { Notification } from "../../components/Notification/Notification";
+import { useNotification } from "../../hooks/useNotification";
+import { useNotificationCounts } from "../../hooks/useNotificationCounts";
+import { useAuth } from "../../hooks/useAuth";
+import { useChats } from "../../hooks/useChats";
+import { useDocuments } from "../../hooks/useDocuments";
+import { formatUserName } from "../../utils/userUtils";
 
 export function KnowledgeBasePageContainer() {
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState(() => {
-    return authService.getCurrentUser();
+  const { notification, notify, closeNotification } = useNotification();
+  const { pendingUsersCount, newFeedbackCount } = useNotificationCounts();
+
+  // Авторизация с проверкой роли HR/admin
+  const { currentUser, isAuthenticated, isHR } = useAuth({
+    requiredRoles: ['hr', 'admin']
   });
 
-  // Состояния для документов
-  const [documents, setDocuments] = useState([
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 1 },
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 2 },
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 3 },
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 4 },
-    { name: "Регламент об отпускных днях", date: "21.06.2025", owner: "Петров Петр Петрович", id: 5 },
-  ]);
+  // Данные из React Query (кэшируются между страницами)
+  const {
+    chats,
+    isLoading: chatsLoading,
+    createChat,
+    renameChat,
+    deleteChat
+  } = useChats();
 
-  // Получаем текущего пользователя
-  /*const [currentUser, setCurrentUser] = useState(() => {
-    const user = authService.getCurrentUser();
-    // Если нет пользователя в localStorage, используем данные из токена
-    if (!user && authService.isAuthenticated()) {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        try {
-          const base64Url = token.split('.')[1];
-          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-          const payload = JSON.parse(window.atob(base64));
-          
-          return {
-            id: parseInt(payload.sub),
-            username: payload.username || '',
-            email: payload.email || '',
-            firstName: payload.first_name || '',
-            lastName: payload.last_name || '',
-            role: payload.role || 'employee',
-          };
-        } catch (error) {
-          console.error('Error decoding token:', error);
-        }
-      }
-    }
-    return user;
-  });*/
+  const {
+    documents,
+    pendingDocuments,
+    isLoading: docsLoading,
+    uploadDocument,
+    deleteDocument: removeDocument,
+    cancelScheduledUpdate,
+    restoreVersion,
+    updateDocument,
+    isRestoring
+  } = useDocuments();
 
-
-  // Состояние для чатов
-  const [chats, setChats] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
+  // Модальные окна
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
-  // Функция для форматирования имени пользователя
-const formatUserName = (user) => {
-  if (!user) return "Пользователь";
-  
-  if (user.firstName && user.lastName) {
-    return `${user.lastName} ${user.firstName}`;
+  // Редирект если не авторизован или нет прав
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
   }
-  
-  if (user.username) {
-    return user.username;
+  if (!isHR) {
+    return <Navigate to="/chat" replace />;
   }
-  
-  return user.email?.split('@')[0] || "Пользователь";
-};
 
   const userName = formatUserName(currentUser);
+  const isLoading = chatsLoading || docsLoading;
 
-
-
-
-  // Загружаем данные при монтировании
-  useEffect(() => {
-    const loadData = async () => {
-      if (!authService.isAuthenticated()) {
-        navigate('/login');
-        return;
-      }
-      
-      const user = authService.getCurrentUser();
-      if (user) {
-        setCurrentUser(user);
-        
-        // Загружаем чаты
-          try {
-          const dialogs = await dialogService.getUserDialogs(user.id);
-          if (dialogs && dialogs.length > 0) {
-            const sortedDialogs = [...dialogs].sort((a, b) => 
-              new Date(b.created_at) - new Date(a.created_at)
-            );
-            
-            // Загружаем переименованные чаты из localStorage
-            const storedChats = JSON.parse(localStorage.getItem('hrg_chats') || '[]');
-            const storedChatsMap = new Map(storedChats.map(chat => [chat.id, chat]));
-            
-            const formattedChats = sortedDialogs.map(dialog => {
-              const storedChat = storedChatsMap.get(dialog.id);
-              return {
-                id: dialog.id,
-                name: storedChat?.name || dialog.title || `Чат ${dialog.id}`,
-                messages: []
-              };
-            });
-            
-            setChats(formattedChats);
-          }
-        } catch (error) {
-          console.error('Error loading dialogs:', error);
-        }
-      }
-      
-      setIsLoading(false);
-    };
-    
-    loadData();
-  }, [navigate]);
-
-  // Создание нового чата
+  // Обработчики чатов
   const handleNewChat = async () => {
-    if (!currentUser?.id) {
-      navigate('/login');
-      return;
-    }
-
     try {
-      // Генерируем имя для нового чата
-      const chatName = `Чат ${chats.length + 1}`;
-      
-      const newDialog = await dialogService.createDialog(
-        chatName,
-        currentUser.id
-      );
-      
-      const newChat = {
-        id: newDialog.id,
-        name: chatName,
-        messages: [],
-      };
-      
-      // Добавляем новый чат в начало списка
-      const updatedChats = [newChat, ...chats];
-      setChats(updatedChats);
-      
-      // Переходим в чат
+      await createChat();
       navigate('/chat');
-      
     } catch (error) {
-      console.error('Error creating chat:', error);
+      notify({ message: "Не удалось создать чат", type: "error" });
     }
   };
 
-  // Выбор чата
-  const handleChatSelect = (chat) => {
-    console.log("Выбран чат:", chat);
-    // Переходим в чат
-    navigate('/chat');
-  };
-
-  // Переименование чата
-  const handleRenameChat = (chatId, newName) => {
-    const updatedChats = chats.map(chat => 
-      chat.id === chatId ? { ...chat, name: newName } : chat
-    );
-    setChats(updatedChats);
-    console.log(`Чат ${chatId} переименован в:`, newName);
-  };
-
-  // Удаление чата
-  const handleDeleteChat = async (chatId) => {
-    if (chats.length <= 1) {
-      alert("Нельзя удалить последний чат");
-      return;
+  const handleChatSelect = (chatId) => {
+    if (chatId) {
+      navigate(`/chat/${chatId}`);
+    } else {
+      navigate('/chat');
     }
-    
+  };
+
+  const handleRenameChat = async (chatId, newName) => {
     try {
-      await dialogService.deleteDialog(chatId);
-      
-      const updatedChats = chats.filter(chat => chat.id !== chatId);
-      setChats(updatedChats);
-      
-      console.log("Удален чат:", chatId);
+      await renameChat(chatId, newName);
     } catch (error) {
-      console.error('Error deleting chat:', error);
+      notify({ message: "Не удалось переименовать чат", type: "error" });
     }
   };
 
-  // Обработчик смены вкладок с навигацией
+  const handleDeleteChat = async (chatId) => {
+    try {
+      await deleteChat(chatId);
+    } catch (error) {
+      notify({ message: "Не удалось удалить чат", type: "error" });
+    }
+  };
+
+  // Навигация по вкладкам
   const handleTabChange = (tab) => {
-    if (tab === "chat") {
-      navigate("/chat");
-    } else if (tab === "queries") {
-      navigate("/query-log");
-    }
+    const routes = {
+      chat: "/chat",
+      knowledge: "/knowledge-base",
+      queries: "/query-log",
+      users: "/users"
+    };
+    navigate(routes[tab] || "/chat");
   };
 
-  // Обработчик открытия модалки редактирования
+  // Обработчики документов
   const handleEditDocument = (document) => {
     setSelectedDocument(document);
     setIsEditModalOpen(true);
   };
 
-  // Обработчик открытия модалки удаления
   const handleDeleteDocument = (document) => {
     setSelectedDocument(document);
     setIsDeleteModalOpen(true);
   };
 
-  // Обработчик открытия модалки добавления
-  const handleAddDocument = () => {
-    setIsAddModalOpen(true);
+  const handlePreviewDocument = (document) => {
+    setSelectedDocument(document);
+    setIsPreviewModalOpen(true);
   };
 
-  // Обработчик сохранения изменений документа
-  const handleSaveDocument = (updatedDocument) => {
-    console.log("Сохранение документа:", updatedDocument);
-    
-    setDocuments(prev => prev.map(doc => 
-      doc.id === updatedDocument.id 
-        ? { 
-            ...doc, 
-            ...updatedDocument
-          } 
-        : doc
-    ));
-    
-    alert(`Документ "${updatedDocument.name}" обновлен!`);
+  const handleAddDocument = () => setIsAddModalOpen(true);
+
+  const handleSaveDocument = async (updateData) => {
+    try {
+      await updateDocument(updateData);
+      notify({ message: `Документ обновлен успешно`, type: "success" });
+      setIsEditModalOpen(false);
+    } catch (error) {
+      notify({ message: error.message || "Ошибка при обновлении документа", type: "error" });
+    }
   };
 
-  // Обработчик добавления нового документа
-  const handleAddNewDocument = (newDocument) => {
-    console.log("Добавление нового документа:", newDocument);
-    
-    // Добавляем новый документ в начало списка
-    setDocuments(prev => [newDocument, ...prev]);
-    
-    alert(`Документ "${newDocument.name}" успешно добавлен!`);
+  const handleAddNewDocument = async (newDocument) => {
+    try {
+      if (newDocument.file) {
+        await uploadDocument(
+          newDocument.file,
+          newDocument.effective_date,
+          newDocument.name,
+          newDocument.access_level || 'all'
+        );
+        // Уведомление отправляется только ПОСЛЕ успешной загрузки
+        notify({ message: `Документ "${newDocument.name}" успешно загружен`, type: "success" });
+        // Закрываем модальное окно
+        setIsAddModalOpen(false);
+      }
+    } catch (error) {
+      notify({ message: error.message || "Ошибка загрузки документа", type: "error" });
+    }
   };
 
-  // Обработчик подтверждения удаления
-  const handleConfirmDelete = (document) => {
-    console.log("Удаление документа:", document);
-    
-    setDocuments(prev => prev.filter(doc => doc.id !== document.id));
-    alert(`Документ "${document.name}" удален!`);
+  const handleConfirmDelete = async (document) => {
+    try {
+      await removeDocument(document.id);
+      notify({ message: `Документ "${document.name}" удален`, type: "success" });
+    } catch (error) {
+      notify({ message: "Ошибка удаления документа", type: "error" });
+    }
+  };
+
+  const handleCancelUpdate = async (document) => {
+    try {
+      await cancelScheduledUpdate(document.id);
+      notify({ message: `Обновление документа "${document.name}" отменено`, type: "success" });
+    } catch (error) {
+      notify({ message: error.response?.data?.detail || "Ошибка отмены обновления", type: "error" });
+    }
   };
 
   return (
     <>
+      {notification && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          onClose={closeNotification}
+        />
+      )}
+
       <KnowledgeBasePage
         documents={documents}
-        userInfo={{
-          username: userName,
-          ...currentUser
-        }}
+        pendingDocuments={pendingDocuments}
+        userInfo={{ ...currentUser, username: userName }}
         onTabChange={handleTabChange}
         chats={chats}
         onNewChat={handleNewChat}
@@ -272,11 +194,14 @@ const formatUserName = (user) => {
         onDeleteChat={handleDeleteChat}
         onEditDocument={handleEditDocument}
         onDeleteDocument={handleDeleteDocument}
+        onPreviewDocument={handlePreviewDocument}
+        onCancelUpdate={handleCancelUpdate}
         onAddDocument={handleAddDocument}
         isLoading={isLoading}
+        pendingUsersCount={pendingUsersCount}
+        newFeedbackCount={newFeedbackCount}
       />
 
-      {/* Модальное окно редактирования документа */}
       <EditDocumentModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
@@ -284,7 +209,6 @@ const formatUserName = (user) => {
         onSave={handleSaveDocument}
       />
 
-      {/* Модальное окно удаления документа */}
       <DeleteDocumentModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
@@ -292,11 +216,26 @@ const formatUserName = (user) => {
         onConfirm={handleConfirmDelete}
       />
 
-      {/* Модальное окно добавления документа */}
       <AddDocumentModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAdd={handleAddNewDocument}
+      />
+
+      <PreviewDocumentModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        document={selectedDocument}
+        onRestoreVersion={async (docId, versionId) => {
+          try {
+            await restoreVersion(docId, versionId);
+            notify({ message: "Версия документа успешно восстановлена", type: "success" });
+            setIsPreviewModalOpen(false);
+          } catch (error) {
+            notify({ message: error.response?.data?.detail || "Не удалось восстановить версию", type: "error" });
+          }
+        }}
+        isRestoring={isRestoring}
       />
     </>
   );
