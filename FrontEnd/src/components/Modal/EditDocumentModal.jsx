@@ -1,27 +1,7 @@
 import styled from "styled-components";
 import { useState, useEffect } from "react";
 import { Modal } from "./Modal";
-import { Button } from "../Button/button";
-
-const ModalButton = styled(Button)`
-  background-color: transparent;
-  border: 1px solid var(--primasy-stroke-1);
-  color: var(--primary-white-1);
-
-  &:hover {
-    background-color: ${({ variant }) =>
-      variant === "danger"
-        ? "var(--secondary-red-1)"
-        : "var(--secondary-orange-1)"};
-  }
-
-  &:active {
-    background-color: ${({ variant }) =>
-      variant === "danger"
-        ? "var(--secondary-red-1)"
-        : "var(--secondary-orange-1)"};
-  }
-`;
+import { ModalButton } from "./ModalStyles";
 
 const InputGroup = styled.div`
   margin-bottom: 1.6rem;
@@ -130,6 +110,44 @@ const DocumentName = styled.div`
   margin-right: auto;
 `;
 
+const Select = styled.select`
+  width: 100%;
+  padding: 1rem 1.2rem;
+  background-color: var(--primary-black-3);
+  border: 1px solid var(--primasy-stroke-1);
+  border-radius: 8px;
+  color: var(--primary-white-1);
+  font-size: 1.4rem;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: var(--secondary-orange-1);
+    box-shadow: 0 0 0 2px rgba(219, 101, 75, 0.2);
+  }
+
+  option {
+    background-color: var(--primary-black-3);
+    color: var(--primary-white-1);
+  }
+`;
+
+const RequiredMark = styled.span`
+  color: var(--secondary-orange-1);
+  margin-left: 0.3rem;
+`;
+
+const ErrorMessage = styled.div`
+  color: #ef4444;
+  font-size: 1.2rem;
+  margin-top: 1rem;
+  padding: 0.8rem 1rem;
+  background-color: rgba(239, 68, 68, 0.1);
+  border-radius: 6px;
+  border-left: 3px solid #ef4444;
+  text-align: center;
+`;
+
 const Divider = styled.div`
   height: 1px;
   background-color: var(--primasy-stroke-1);
@@ -146,23 +164,25 @@ export function EditDocumentModal({
   document, 
   onSave 
 }) {
-  const [effectiveDate, setEffectiveDate] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
-  const [formData, setFormData] = useState({
-  name: document?.name || '',
-  description: document?.description || '',
-  content: document?.content || '',
-  date: document?.date || '',
-  owner: document?.owner || ''
-  });
-  // Инициализируем дату при открытии модалки
+  const [title, setTitle] = useState("");
+  const [accessLevel, setAccessLevel] = useState("all");
+  const [effectiveDate, setEffectiveDate] = useState("");
+  const [error, setError] = useState("");
+
+  // Инициализируем поля при открытии модалки
   useEffect(() => {
-    if (isOpen && document?.date) {
-      // Преобразуем дату из формата DD.MM.YYYY в YYYY-MM-DD для input[type="date"]
-      const parts = document.date.split('.');
-      if (parts.length === 3) {
-        const formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        setEffectiveDate(formattedDate);
+    if (isOpen && document) {
+      setTitle(document.title || document.name || '');
+      setAccessLevel(document.access_level || 'all');
+
+      // Устанавливаем дату вступления в силу
+      if (document.effective_date) {
+        const dateObj = new Date(document.effective_date);
+        const formatted = dateObj.toISOString().split('T')[0];
+        setEffectiveDate(formatted);
+      } else {
+        setEffectiveDate("");
       }
     }
   }, [isOpen, document]);
@@ -175,29 +195,46 @@ export function EditDocumentModal({
   };
 
   const handleSubmit = () => {
-    // Преобразуем дату обратно в формат DD.MM.YYYY для таблицы
-    let formattedDate = document?.date; // Оставляем старую дату, если не изменили
-    
-    if (effectiveDate) {
-      const dateObj = new Date(effectiveDate);
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const year = dateObj.getFullYear();
-      formattedDate = `${day}.${month}.${year}`;
+    // Сбрасываем предыдущую ошибку
+    setError("");
+
+    // Валидация названия
+    if (!title.trim()) {
+      setError("Пожалуйста, введите название документа");
+      return;
     }
-    
-    onSave({
-      ...document,
-      date: formattedDate, // Обновляем дату
-      effectiveDate: effectiveDate,
+
+    // Валидация даты при загрузке нового файла
+    if (selectedFile && effectiveDate) {
+      const selectedDate = new Date(effectiveDate);
+      const tenYearsAgo = new Date();
+      tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
+
+      if (selectedDate < tenYearsAgo) {
+        setError("Дата вступления в силу не может быть старше 10 лет");
+        return;
+      }
+    }
+
+    // Формируем данные для отправки
+    const updateData = {
+      id: document.id,
+      title: title.trim(),
+      access_level: accessLevel,
+      effective_from: effectiveDate || null,
       file: selectedFile
-    });
+    };
+
+    onSave(updateData);
     handleClose();
   };
 
   const handleClose = () => {
-    setEffectiveDate("");
     setSelectedFile(null);
+    setTitle("");
+    setAccessLevel("all");
+    setEffectiveDate("");
+    setError("");
     onClose();
   };
 
@@ -205,7 +242,7 @@ export function EditDocumentModal({
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose}>
-      <h2 style={{ 
+      <h2 style={{
         fontSize: "1.8rem",
         marginBottom: "1rem",
         color: "var(--primary-white-1)",
@@ -214,13 +251,46 @@ export function EditDocumentModal({
       }}>
         Редактирование документа
       </h2>
-      
-      <DocumentName>
-        "{document?.name}"
-      </DocumentName>
-      
+
       <Divider />
-      
+
+      <InputGroup>
+        <Label>
+          Название документа<RequiredMark>*</RequiredMark>
+        </Label>
+        <Input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Введите название документа"
+          required
+        />
+      </InputGroup>
+
+      <InputGroup>
+        <Label>Уровень доступа</Label>
+        <Select
+          value={accessLevel}
+          onChange={(e) => setAccessLevel(e.target.value)}
+        >
+          <option value="all">Доступен всем сотрудникам</option>
+          <option value="hr_only">Только HR и администраторы</option>
+        </Select>
+      </InputGroup>
+
+      <Divider />
+
+      <InputGroup>
+        <Label>Дата вступления документа в силу (при загрузке нового файла)</Label>
+        <Input
+          type="date"
+          value={effectiveDate}
+          onChange={(e) => setEffectiveDate(e.target.value)}
+        />
+      </InputGroup>
+
+      <Divider />
+
       <FileInput>
         <input
           type="file"
@@ -242,21 +312,12 @@ export function EditDocumentModal({
       </FileInput>
       
       <Divider />
-      
-      <InputGroup>
-        <Label>Дата вступления документа в силу</Label>
-        <Input
-          type="date"
-          value={effectiveDate}
-          onChange={(e) => setEffectiveDate(e.target.value)}
-        />
-      </InputGroup>
-      
-      <Divider />
-      
-      <div style={{ 
-        display: "flex", 
-        gap: "1.2rem", 
+
+      {error && <ErrorMessage>{error}</ErrorMessage>}
+
+      <div style={{
+        display: "flex",
+        gap: "1.2rem",
         justifyContent: "center",
         marginTop: "1.2rem"
       }}>

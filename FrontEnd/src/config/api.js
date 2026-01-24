@@ -1,12 +1,12 @@
 // Конфигурация API
+// Используем /api - работает через vite proxy (dev) и nginx (production/docker)
 export const API_CONFIG = {
-  BASE_URL: 'http://localhost:8000', // Прямо указываем URL
-  API_PREFIX: '/api',
+  BASE_URL: '/api',
+  API_PREFIX: '',
 };
 
 export const API_URL = `${API_CONFIG.BASE_URL}${API_CONFIG.API_PREFIX}`;
+export const API_BASE_URL = API_CONFIG.BASE_URL;
+export const RAG_URL = '/rag';  // RAG сервис через прокси
 export const AUTH_URL = `${API_URL}/auth`;
 export const DIALOGS_URL = `${API_URL}/dialogs`;
-
-// Для разработки установим переменную окружения в .env файле
-// REACT_APP_API_URL=http://localhost:8000

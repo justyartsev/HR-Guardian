@@ -6,26 +6,22 @@ const Wrapper = styled.div`
   align-items: stretch;
   width: 100%;
 
-  background-color: var(--primary-black-3);
+  background-color: var(--primary-black-2);
   border: 1px solid var(--primasy-stroke-1);
-  border-radius: 10px;
-  transition: border 300ms ease;
-
-  &:hover {
-    border-color: rgba(219, 101, 75, 0.7);
-  }
+  border-radius: 12px;
+  transition: all 200ms ease;
 
   &:focus-within {
-    border-color: var(--secondary-orange-1);
-    box-shadow: 0 0 0 2px rgba(219, 101, 75, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
   }
 `;
 
 const StyledTextarea = styled.textarea`
   flex: 1;
-  padding: 12px 16px;
-  font-size: 1.6rem;
-  line-height: 1.4;
+  padding: 14px 16px;
+  font-size: 1.5rem;
+  line-height: 1.5;
 
   border: none;
   background: transparent;
@@ -42,6 +38,10 @@ const StyledTextarea = styled.textarea`
   &:focus {
     outline: none;
   }
+  
+  &::placeholder {
+    color: var(--text-secondary);
+  }
 `;
 
 const SendButton = styled.button`
@@ -56,14 +56,15 @@ const SendButton = styled.button`
   color: var(--primary-white-1);
   cursor: pointer;
 
-  transition: color 200ms ease, opacity 200ms ease;
+  transition: all 200ms ease;
 
   &:hover:not(:disabled) {
     color: var(--secondary-orange-1);
+    transform: scale(1.1);
   }
 
   &:disabled {
-    opacity: 0.4;
+    opacity: 0.3;
     cursor: default;
   }
 `;

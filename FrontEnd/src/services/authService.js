@@ -1,30 +1,54 @@
-// src/services/authService.js
 import api from './api';
+
+// Декодирование JWT токена
+const decodeJWT = (token) => {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(window.atob(base64));
+  } catch (error) {
+    console.error('Error decoding JWT:', error);
+    return null;
+  }
+};
+
+// Извлечение данных пользователя из JWT payload
+const extractUserInfo = (payload) => {
+  if (!payload || !payload.sub) return null;
+  return {
+    id: parseInt(payload.sub),
+    username: payload.username || '',
+    email: payload.email || '',
+    firstName: payload.first_name || '',
+    lastName: payload.last_name || '',
+    role: payload.role || 'employee',
+    position: payload.position || '',
+    department: payload.department || '',
+    status: payload.status || 'pending',
+  };
+};
 
 export const authService = {
   async register(userData) {
     try {
-      console.log('Registration attempt:', userData.email);
-      
       const response = await api.post('/auth/register', {
         username: userData.username,
         email: userData.email,
         password: userData.password,
         first_name: userData.firstName || '',
         last_name: userData.lastName || '',
-        role: 'hr',
+        position: userData.position || null,
+        department: userData.department || null,
+        role: 'employee', // По умолчанию все новые пользователи - сотрудники
       });
-      
-      console.log('Registration successful:', response.data);
-      
-      // После регистрации автоматически логинимся
-      const loginResult = await this.login({
-        email: userData.email,
-        password: userData.password
-      });
-      
-      return loginResult;
-      
+
+      // НЕ делаем автологин - пользователь должен быть одобрен HR/админом
+      return {
+        success: true,
+        message: 'Регистрация успешна! Ожидайте одобрения администратора.',
+        user: response.data
+      };
+
     } catch (error) {
       console.error('Registration failed:', {
         message: error.message,
@@ -35,36 +59,32 @@ export const authService = {
     }
   },
 
-  async login(credentials) {
+  async login(emailOrCredentials, passwordArg, rememberMeArg) {
     try {
-      console.log('Login called with credentials:', credentials);
-      
-      // Правильно извлекаем email и password
-      let email, password;
-      
-      if (typeof credentials === 'object' && credentials !== null) {
-        // Если передан объект {email: "...", password: "..."}
-        email = credentials.email;
-        password = credentials.password;
+      // Поддерживаем оба формата вызова:
+      // login({email, password, remember_me}) или login(email, password, rememberMe)
+      let email, password, remember_me;
+
+      if (typeof emailOrCredentials === 'object' && emailOrCredentials !== null) {
+        email = emailOrCredentials.email;
+        password = emailOrCredentials.password;
+        remember_me = emailOrCredentials.remember_me || false;
       } else {
-        // Если передан email как строка и password как второй аргумент (устаревший формат)
-        email = credentials;
-        password = arguments[1];
+        email = emailOrCredentials;
+        password = passwordArg;
+        remember_me = rememberMeArg || false;
       }
-      
-      console.log('Extracted email:', email, 'password:', password ? '***' : 'undefined');
-      
+
       if (!email || !password) {
         throw new Error('Email and password are required');
       }
-      
+
       const response = await api.post('/auth/login', {
         email: email,
         password: password,
+        remember_me: remember_me,
       });
-      
-      console.log('Login response:', response.data);
-      
+
       if (!response.data.access_token) {
         throw new Error('No access token in response');
       }
@@ -74,21 +94,9 @@ export const authService = {
       
       // Декодируем токен для получения данных пользователя
       const token = response.data.access_token;
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-      
-      const userInfo = {
-        id: parseInt(payload.sub),
-        username: payload.username || '',
-        email: payload.email || '',
-        firstName: payload.first_name || '',
-        lastName: payload.last_name || '',
-        role: payload.role || 'employee',
-      };
-      
-      console.log('Decoded user info:', userInfo);
-      
+      const payload = decodeJWT(token);
+      const userInfo = extractUserInfo(payload);
+
       // Сохраняем пользователя
       localStorage.setItem('user', JSON.stringify(userInfo));
       
@@ -123,20 +131,9 @@ export const authService = {
     try {
       const token = localStorage.getItem('access_token');
       if (!token) return null;
-      
-      // Декодируем JWT токен
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-      
-      return {
-        id: parseInt(payload.sub),
-        username: payload.username || '',
-        email: payload.email || '',
-        firstName: payload.first_name || '',
-        lastName: payload.last_name || '',
-        role: payload.role || 'employee',
-      };
+
+      const payload = decodeJWT(token);
+      return extractUserInfo(payload);
     } catch (error) {
       console.error('Error getting user info:', error);
       return null;
@@ -148,33 +145,17 @@ export const authService = {
       // Пытаемся получить из localStorage
       const userStr = localStorage.getItem('user');
       if (userStr) {
-        const user = JSON.parse(userStr);
-        console.log('Retrieved user from localStorage:', user);
-        return user;
+        return JSON.parse(userStr);
       }
-      
+
       // Если нет в localStorage, пытаемся декодировать из токена
       const token = localStorage.getItem('access_token');
       if (!token) {
-        console.log('No token found');
         return null;
       }
-      
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-      
-      const user = {
-        id: parseInt(payload.sub),
-        username: payload.username || '',
-        email: payload.email || '',
-        firstName: payload.first_name || '',
-        lastName: payload.last_name || '',
-        role: payload.role || 'employee',
-      };
-      
-      console.log('Decoded user from token:', user);
-      return user;
+
+      const payload = decodeJWT(token);
+      return extractUserInfo(payload);
       
     } catch (error) {
       console.error('Error getting current user:', error);
@@ -183,40 +164,64 @@ export const authService = {
   },
 
   logout() {
-    console.log('Logging out...');
-    // Очищаем все данные
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user');
-    console.log('User logged out');
+    localStorage.clear();
+    sessionStorage.clear();
   },
 
   isAuthenticated() {
     try {
       const token = localStorage.getItem('access_token');
       if (!token) {
-        console.log('No token - not authenticated');
         return false;
       }
-      
+
       // Проверяем, не истек ли токен
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
-      
-      // Проверяем expiry
-      if (payload.exp && Date.now() >= payload.exp * 1000) {
-        console.log('Token expired');
+      const payload = decodeJWT(token);
+      if (!payload) {
         this.logout();
         return false;
       }
-      
-      console.log('User is authenticated');
+
+      // Проверяем expiry
+      if (payload.exp && Date.now() >= payload.exp * 1000) {
+        this.logout();
+        return false;
+      }
+
       return true;
-      
+
     } catch (error) {
       console.error('Error checking authentication:', error);
       this.logout();
       return false;
+    }
+  },
+
+  async updateProfile({ firstName, lastName, position, department }) {
+    try {
+      const updateData = {};
+      if (firstName !== undefined) updateData.first_name = firstName;
+      if (lastName !== undefined) updateData.last_name = lastName;
+      if (position !== undefined) updateData.position = position;
+      if (department !== undefined) updateData.department = department;
+
+      const response = await api.patch('/users/me', updateData);
+
+      // Обновляем локальное хранилище
+      const currentUser = this.getCurrentUser();
+      const updatedUser = {
+        ...currentUser,
+        firstName: response.data.first_name ?? currentUser.firstName,
+        lastName: response.data.last_name ?? currentUser.lastName,
+        position: response.data.position ?? currentUser.position,
+        department: response.data.department ?? currentUser.department
+      };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+
+      return updatedUser;
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      throw error;
     }
   },
 };

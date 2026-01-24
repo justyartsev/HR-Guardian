@@ -1,23 +1,27 @@
 import styled from 'styled-components';
 import { Button } from '../Button/button';
 import { useNavigate } from 'react-router-dom';
+import { authService } from '../../services/authService';
+import { useUser } from '../../contexts/UserContext';
 
 const AuthButtonContainer = styled.div`
   position: absolute;
-  top: 1.5rem; /* Меняем с 2rem на 1.5rem чтобы была на уровне заголовка */
+  top: 1.5rem;
   right: 3rem;
   z-index: 100;
 `;
 
 export function HeaderAuthButton() {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem('user'));
+  const { clearUserData } = useUser();
+  const isAuthenticated = authService.isAuthenticated();
 
   const handleClick = () => {
-    if (user) {
-      localStorage.removeItem('user');
-      localStorage.removeItem('hrg_chats');
-      window.location.reload();
+    if (isAuthenticated) {
+      localStorage.clear();
+      sessionStorage.clear();
+      clearUserData();
+      window.location.replace('/login');
     } else {
       navigate('/login');
     }
@@ -25,12 +29,12 @@ export function HeaderAuthButton() {
 
   return (
     <AuthButtonContainer>
-      <Button 
+      <Button
         onClick={handleClick}
         style={{ height: '4rem', padding: '0 2rem' }}
-        variant={user ? "danger" : ""}
+        variant={isAuthenticated ? "danger" : ""}
       >
-        {user ? 'Выйти' : 'Войти / Зарегистрироваться'}
+        {isAuthenticated ? 'Выйти' : 'Войти / Зарегистрироваться'}
       </Button>
     </AuthButtonContainer>
   );

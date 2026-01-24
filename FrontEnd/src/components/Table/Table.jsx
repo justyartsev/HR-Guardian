@@ -1,24 +1,30 @@
 import { TableWrapper, StyledTable, Thead, Th, Tbody } from "./table.styles";
 import { TableRow } from "./TableRow";
 
-export function Table({ 
-  data, 
+export function Table({
+  data,
   type = "documents", // По умолчанию таблица документов
   onEdit,
-  onDelete 
+  onDelete,
+  onView,
+  onPreview,
+  onCancelUpdate, // Отмена запланированного обновления
+  onStatusChange // Новый пропс для изменения статуса жалобы
 }) {
   const headers = {
     documents: [
       { key: "name", label: "Название" },
-      { key: "date", label: "Дата обновления" },
-      { key: "owner", label: "Ответственный" },
+      { key: "effective_from", label: "Вступает в силу" },
+      { key: "status", label: "Статус" },
+      { key: "version", label: "Версия" },
       { key: "actions", label: "" }
     ],
     complaints: [
-      { key: "name", label: "Название" },
-      { key: "date", label: "Дата создания" },
+      { key: "name", label: "ID" },
+      { key: "date", label: "Дата" },
       { key: "user", label: "Пользователь" },
-      { key: "delete", label: "" }
+      { key: "status", label: "Статус" },
+      { key: "actions", label: "" }
     ]
   };
 
@@ -42,6 +48,10 @@ export function Table({
               type={type}
               onEdit={() => onEdit && onEdit(item)}
               onDelete={() => onDelete && onDelete(item)}
+              onView={() => onView && onView(item)}
+              onPreview={() => onPreview && onPreview(item)}
+              onCancelUpdate={onCancelUpdate ? () => onCancelUpdate(item) : null}
+              onStatusChange={onStatusChange}
             />
           ))}
         </Tbody>

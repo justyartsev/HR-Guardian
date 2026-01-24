@@ -27,6 +27,14 @@ const ModalContent = styled.div`
   border: 1px solid var(--primasy-stroke-1);
   color: var(--primary-white-1);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+
+  /* Скрываем полосу прокрутки, но сохраняем функциональность */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE и Edge */
+
+  &::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
 `;
 
 export function Modal({ isOpen, onClose, children, title, size = "medium" }) {

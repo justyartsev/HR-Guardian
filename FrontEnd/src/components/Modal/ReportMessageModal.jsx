@@ -1,27 +1,7 @@
 import styled from "styled-components";
 import { useState } from "react";
 import { Modal } from "./Modal";
-import { Button } from "../Button/button";
-
-const ModalButton = styled(Button)`
-  background-color: transparent;
-  border: 1px solid var(--primasy-stroke-1);
-  color: var(--primary-white-1);
-
-  &:hover {
-    background-color: ${({ variant }) =>
-      variant === "danger"
-        ? "var(--secondary-red-1)"
-        : "var(--secondary-orange-1)"};
-  }
-
-  &:active {
-    background-color: ${({ variant }) =>
-      variant === "danger"
-        ? "var(--secondary-red-1)"
-        : "var(--secondary-orange-1)"};
-  }
-`;
+import { ModalButton } from "./ModalStyles";
 
 const MessageContent = styled.div`
   background-color: var(--primary-black-3);
@@ -35,7 +15,7 @@ const MessageHeader = styled.div`
   font-size: 1.4rem;
   color: var(--secondary-orange-1);
   font-weight: 600;
-  margin-bottom: 0.8rem;
+  margin-bottom: 1.2rem;
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -49,19 +29,20 @@ const MessageText = styled.p`
   font-size: 1.3rem;
   color: rgba(255, 255, 255, 0.9);
   line-height: 1.5;
-  margin-bottom: 0.8rem;
+  margin: 0;
 `;
 
 const CommentSection = styled.div`
   margin-bottom: 1.6rem;
 `;
 
-const CommentLabel = styled.div`
+const CommentLabel = styled.label`
   font-size: 1.4rem;
   color: var(--primary-white-1);
   font-weight: 600;
   margin-bottom: 0.8rem;
   font-style: italic;
+  display: block;
 `;
 
 const CommentTextarea = styled.textarea`

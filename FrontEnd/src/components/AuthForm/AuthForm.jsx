@@ -93,6 +93,24 @@ const ErrorText = styled.p`
   padding: 0 0.5rem;
 `;
 
+const SuccessText = styled.p`
+  color: #4caf50;
+  font-size: 1.3rem;
+  text-align: center;
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background-color: rgba(76, 175, 80, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+`;
+
+const OptionalLabel = styled.span`
+  font-size: 1.1rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 400;
+  margin-left: 0.5rem;
+`;
+
 const LoadingText = styled.p`
   color: var(--secondary-orange-1);
   font-size: 1.3rem;
@@ -123,9 +141,13 @@ export default function AuthForm({ isLogin }) {
   const [username, setUsername] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [position, setPosition] = useState('');
+  const [department, setDepartment] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -136,12 +158,13 @@ export default function AuthForm({ isLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
-  
+
     // Валидация для регистрации
     if (!isLogin) {
       if (!email || !password || !confirmPassword || !firstName || !lastName) {
-        setError('Пожалуйста, заполните все поля');
+        setError('Пожалуйста, заполните обязательные поля');
         setLoading(false);
         return;
       }
@@ -200,38 +223,55 @@ export default function AuthForm({ isLogin }) {
     try {
       if (isLogin) {
         // Вход
-        await authService.login(email, password);
-        console.log('Login successful');
+        await authService.login(email, password, rememberMe);
         navigate('/chat');
       } else {
-        // Регистрация - генерируем username
-        const generatedUsername = `${firstName.toLowerCase()}_${lastName.toLowerCase()}`;
-        
+        // Регистрация - username = email (оба уникальны, поле обязательное в БД)
         const userData = {
-          username: generatedUsername,
+          username: email,
           email,
           password,
           firstName,
           lastName,
+          position: position || null,
+          department: department || null,
         };
-        
+
         await authService.register(userData);
-        console.log('Registration and auto-login successful');
-        navigate('/chat');
+        // Показываем сообщение об успешной регистрации
+        setSuccess('Регистрация успешна! Ожидайте подтверждения администратором.');
+        // Очищаем форму
+        setEmail('');
+        setPassword('');
+        setConfirmPassword('');
+        setFirstName('');
+        setLastName('');
+        setPosition('');
+        setDepartment('');
       }
     } catch (error) {
       console.error('Auth error:', error);
-      
-      if (error.response?.data?.detail) {
-        setError(error.response.data.detail);
-      } else if (error.response?.data?.email) {
-        setError(`Пользователь с email ${email} уже существует`);
-      } else if (error.response?.status === 400) {
-        setError('Некорректные данные');
+
+      // authService бросает Error с message, axios бросает с response.data.detail
+      const detail = error.response?.data?.detail || error.message;
+
+      // Переводим ошибки бэкенда на русский
+      const errorMessages = {
+        'Email already registered': 'Пользователь с таким email уже зарегистрирован',
+        'Invalid email or password': 'Неверный email или пароль',
+        'Password must be at least 6 characters': 'Пароль должен быть не менее 6 символов',
+        'Invalid email format': 'Некорректный формат email',
+      };
+
+      if (detail && errorMessages[detail]) {
+        setError(errorMessages[detail]);
+      } else if (detail && detail !== 'undefined') {
+        // Показываем ошибку как есть (включая русские от бэкенда для pending/rejected аккаунтов)
+        setError(detail);
       } else if (error.response?.status === 401) {
         setError('Неверный email или пароль');
       } else if (error.code === 'ERR_NETWORK') {
-        setError('Не удалось подключиться к серверу. Проверьте запущен ли бэкенд.');
+        setError('Не удалось подключиться к серверу');
       } else {
         setError('Произошла ошибка. Попробуйте позже.');
       }
@@ -338,6 +378,32 @@ export default function AuthForm({ isLogin }) {
                 }}
               />
             </FormGroup>
+
+            <FormGroup>
+              <Label>Должность<OptionalLabel>(необязательно)</OptionalLabel></Label>
+              <AuthInput
+                type="text"
+                placeholder="Например: Менеджер по продажам"
+                value={position}
+                onChange={(e) => {
+                  setPosition(e.target.value);
+                  setError('');
+                }}
+              />
+            </FormGroup>
+
+            <FormGroup>
+              <Label>Отдел<OptionalLabel>(необязательно)</OptionalLabel></Label>
+              <AuthInput
+                type="text"
+                placeholder="Например: Отдел продаж"
+                value={department}
+                onChange={(e) => {
+                  setDepartment(e.target.value);
+                  setError('');
+                }}
+              />
+            </FormGroup>
           </>
         )}
 
@@ -367,7 +433,7 @@ export default function AuthForm({ isLogin }) {
                   setError('');
                 }}
               />
-              <button 
+              <button
                 type="button"
                 onClick={togglePasswordVisibility}
                 style={{
@@ -384,24 +450,52 @@ export default function AuthForm({ isLogin }) {
                 {showPassword ? 'Скрыть пароль' : 'Показать пароль'}
               </button>
             </FormGroup>
+
+            <FormGroup>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.8rem',
+                color: 'var(--primary-white-1)',
+                fontSize: '1.4rem',
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  style={{
+                    width: '1.8rem',
+                    height: '1.8rem',
+                    cursor: 'pointer',
+                    accentColor: 'var(--primary-blue-1)'
+                  }}
+                />
+                <span>Запомнить меня</span>
+              </label>
+            </FormGroup>
           </>
         )}
 
         {error && <ErrorText>{error}</ErrorText>}
+        {success && <SuccessText>{success}</SuccessText>}
         {loading && <LoadingText>Загрузка...</LoadingText>}
 
-        <Button 
-          type="submit" 
-          style={{ 
-            height: '4.5rem', 
-            width: '100%', 
-            marginTop: '1.2rem', 
-            fontSize: '1.6rem' 
-          }}
-          disabled={loading}
-        >
-          {loading ? 'Загрузка...' : (isLogin ? 'Войти' : 'Зарегистрироваться')}
-        </Button>
+        {!success && (
+          <Button
+            type="submit"
+            style={{
+              height: '4.5rem',
+              width: '100%',
+              marginTop: '1.2rem',
+              fontSize: '1.6rem'
+            }}
+            disabled={loading}
+          >
+            {loading ? 'Загрузка...' : (isLogin ? 'Войти' : 'Зарегистрироваться')}
+          </Button>
+        )}
 
         <SwitchLink onClick={handleSwitch}>
           {isLogin ? 'Нет аккаунта? Зарегистрироваться' : 'Есть аккаунт? Войти'}

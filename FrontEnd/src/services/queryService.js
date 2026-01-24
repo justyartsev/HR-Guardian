@@ -1,17 +1,12 @@
 import api from './api';
+import { streamService } from './streamService';
 
 export const queryService = {
-  // Отправить запрос к нейронной сети
-  async processQuery(dialogId, query) {
+  // Отправить запрос к нейронной сети через SSE
+  async processQuery(dialogId, query, onChunk, onComplete, onError, personalData = {}, chatMessages = []) {
     try {
-      console.log('Sending query to AI:', query);
-      const response = await api.post('/query/', {
-        dialog_id: dialogId,
-        query: query,
-      });
-      return response.data;
+      await streamService.sendQueryStream(dialogId, query, onChunk, onComplete, onError, personalData, chatMessages);
     } catch (error) {
-      console.error('Error processing query:', error);
       throw error;
     }
   },

@@ -3,11 +3,36 @@
     --primary-black-2: rgba(35, 38, 48, 1);
     --primary-black-3: rgba(44, 47, 58, 1);
 
-
     --primasy-stroke-1: rgba(69, 61, 61, 1);
 
     --primary-white-1: rgba(255, 255, 255, 1);
 
     --secondary-orange-1: rgba(219, 101, 75, 1);
     --secondary-red-1: rgba(205, 5, 27, 1);
+
+    /* Дополнительные цвета */
+    --accent-green: #27ae60;
+    --accent-purple: #9b59b6;
+    --text-secondary: #95a5a6;
+}
+
+*{
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 62.5%;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 1.6rem;
+    line-height: 1.5;
+    background-color: var(--primary-black-1);
+    color: var(--primary-white-1);
 }
