@@ -3,20 +3,20 @@ import SideMenu from "../../components/SideMenu/sideMenu";
 import { Message } from "../../components/Message/message";
 import { Input } from "../../components/input/Input";
 import { ChatWindow } from "../../components/ChatWindow/ChatWindow";
-import { HeaderAuthButton } from '../../components/AuthButton/HeaderAuthButton';
 
 const LayoutContainer = styled.div`
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
   background-color: var(--primary-black-2);
   color: var(--primary-white-1);
-  width: 100vw; /* Добавляем */
-  overflow-x: hidden; /* Добавляем */
+  width: 100vw;
+  overflow: hidden;
 `;
 
 const MainContent = styled.main`
   flex: 1;
-  padding: 2rem 3rem 0 3rem;
+  padding: 2rem 3rem 1.5rem 3rem;
   display: flex;
   flex-direction: column;
   background: linear-gradient(
@@ -26,8 +26,7 @@ const MainContent = styled.main`
   );
   height: 100vh;
   max-height: 100vh;
-  max-width: calc(100vw - 20%); /* Учитываем ширину SideMenu */
-  overflow-x: hidden;
+  overflow: hidden;
 `;
 
 const Title = styled.h1`
@@ -41,19 +40,14 @@ const Title = styled.h1`
 `;
 
 const InputContainer = styled.div`
-  padding: 0.5rem 0 1.2rem 0;
-  background: linear-gradient(
-    transparent,
-    var(--primary-black-3) 30%
-  );
+  padding: 1rem 0 0 0;
   flex-shrink: 0;
   position: relative;
   z-index: 1;
 `;
 
-// НОВЫЙ компонент для Input в приветственном экране (без градиента)
 const WelcomeInputContainer = styled.div`
-  padding: 0.5rem 0 1.2rem 0;
+  padding: 0.5rem 0 0 0;
   flex-shrink: 0;
   position: relative;
   z-index: 1;
@@ -66,12 +60,6 @@ const ChatWindowWrapper = styled.div`
   margin-bottom: 0;
   max-height: calc(100vh - 200px);
 `;
-
-// Удаляем Spacer - он не нужен
-// const Spacer = styled.div`
-//   height: 5rem;
-//   flex-shrink: 0;
-// `;
 
 // Контейнер для приветственного экрана
 const WelcomeScreen = styled.div`
@@ -103,7 +91,130 @@ const WelcomeText = styled.div`
   line-height: 1.5;
 `;
 
-export function MainPage({ 
+// Контейнер для настроек чата (thinking toggle)
+const ChatSettings = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  flex-shrink: 0;
+`;
+
+const ToggleContainer = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 1.2rem;
+  color: var(--primary-white-1);
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  
+  &:hover {
+    opacity: 1;
+  }
+`;
+
+const ToggleSwitch = styled.div`
+  width: 36px;
+  height: 20px;
+  background: ${props => props.$active ? 'var(--secondary-orange-1)' : 'rgba(255,255,255,0.2)'};
+  border-radius: 10px;
+  position: relative;
+  transition: background 0.2s;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    background: white;
+    border-radius: 50%;
+    top: 2px;
+    left: ${props => props.$active ? '18px' : '2px'};
+    transition: left 0.2s;
+  }
+`;
+
+// Стили для редактирования сообщений
+const EditableMessage = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+`;
+
+const EditTextarea = styled.textarea`
+  width: 100%;
+  min-height: 60px;
+  padding: 0.8rem;
+  font-size: 1.4rem;
+  background: var(--primary-black-2);
+  border: 1px solid var(--secondary-orange-1);
+  border-radius: 8px;
+  color: var(--primary-white-1);
+  resize: vertical;
+  
+  &:focus {
+    outline: none;
+    border-color: var(--secondary-orange-1);
+  }
+`;
+
+const EditButtons = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+`;
+
+const EditButton = styled.button`
+  padding: 0.4rem 0.8rem;
+  font-size: 1.2rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &.save {
+    background: var(--secondary-orange-1);
+    color: white;
+    &:hover { opacity: 0.9; }
+  }
+  
+  &.cancel {
+    background: rgba(255,255,255,0.1);
+    color: var(--primary-white-1);
+    &:hover { background: rgba(255,255,255,0.2); }
+  }
+`;
+
+const MessageEditIcon = styled.button`
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  padding: 0.2rem;
+  margin-left: 0.5rem;
+  opacity: 0;
+  transition: all 0.2s;
+  
+  &:hover {
+    color: var(--secondary-orange-1);
+  }
+`;
+
+const MessageWrapper = styled.div`
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 0.8rem;
+  max-width: 100%;
+  
+  &:hover ${MessageEditIcon} {
+    opacity: 1;
+  }
+`;
+
+export function MainPage({
   inputValue,
   messages,
   chats,
@@ -111,7 +222,12 @@ export function MainPage({
   activeChatId,
   onLogout,
   isLoading,
+  isLoadingMessages = false,
   userName,
+  firstName,
+  lastName,
+  position,
+  department,
   onInputChange,
   onSendMessage,
   onReportMessage,
@@ -119,102 +235,117 @@ export function MainPage({
   onChatSelect,
   onTabChange,
   onRenameChat,
-  onDeleteChat
+  onDeleteChat,
+  onUpdateProfile,
+  onRetryMessage,
+  pendingUsersCount = 0,
+  newFeedbackCount = 0,
+  // Новые props
+  enableThinking = false,
+  onToggleThinking,
+  editingMessageId,
+  editingContent,
+  onEditingContentChange,
+  onStartEditMessage,
+  onCancelEdit,
+  onSaveEdit
 }) {
-  const isEmptyChat = messages.length === 0;
+  // Показываем пустой чат только если сообщений нет и не в процессе загрузки
+  // Приветственный экран показывается ВСЕГДА когда нет сообщений, даже если выбран чат
+  const isEmptyChat = messages.length === 0 && !isLoadingMessages;
   
   return (
     <LayoutContainer>
-      <SideMenu 
+      <SideMenu
         active="chat"
         onTabChange={onTabChange}
         chats={chats}
         activeChatId={activeChatId}
         onNewChat={onNewChat}
         username={userName}
+        firstName={firstName}
+        lastName={lastName}
+        position={position}
+        department={department}
+        onUpdateProfile={onUpdateProfile}
         onChatSelect={onChatSelect}
-        onRenameChat={onRenameChat}    
-        onDeleteChat={onDeleteChat} 
+        onRenameChat={onRenameChat}
+        onDeleteChat={onDeleteChat}
+        userRole={currentUser?.role}
+        pendingUsersCount={pendingUsersCount}
+        newFeedbackCount={newFeedbackCount}
       />
       
       <MainContent>
         <Title>HR-Guardian</Title>
-        <HeaderAuthButton /> {/* Добавляем кнопку авторизации */}
         
         {!isEmptyChat ? (
           // Если есть сообщения - показываем нормальный интерфейс
           <>
             <ChatWindowWrapper>
               <ChatWindow messages={messages}>
-                {messages.map((msg) => (
-                  <div 
-                    key={msg.id} 
-                    style={{ 
-                      marginBottom: "0.8rem",
-                      maxWidth: "100%",
-                    }}
-                  >
-                    <div style={{
-                      maxWidth: "100%",
-                      wordWrap: "break-word",
-                      overflowWrap: "break-word",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                    }}>
-                      <Message
-                        variant={msg.type}
-                        showReportButton={msg.showReportButton}
-                        onReport={() => onReportMessage(msg)}
-                      >
-                        <span style={{
-                          maxWidth: "100%",
-                          wordWrap: "break-word",
-                          overflowWrap: "break-word",
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
-                          display: "inline-block",
-                        }}>
-                          {msg.content}
-                        </span>
-                      </Message>
-                    </div>
-                    
-                    {msg.type === "output" && msg.showReportButton && (
-                      <div style={{ 
-                        marginLeft: "1rem", 
-                        marginTop: "0.3rem",
-                        textAlign: "left"
+                {messages.map((msg) => {
+                  const isEditing = editingMessageId === msg.id;
+                  const canEdit = msg.type === 'input' && !msg.isProcessing;
+                  
+                  return (
+                    <MessageWrapper key={msg.id}>
+                      <div style={{
+                        flex: 1,
+                        maxWidth: "100%",
+                        wordWrap: "break-word",
+                        overflowWrap: "break-word",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
                       }}>
-                        <button
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "rgba(255, 255, 255, 0.6)",
-                            cursor: "pointer",
-                            fontSize: "1.1rem",
-                            padding: "0",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.3rem"
-                          }}
-                          onClick={() => onReportMessage(msg)}
-                          title="Пожаловаться на сообщение"
-                        >
-                          <span style={{ 
-                            color: "var(--secondary-red-1)", 
-                            fontWeight: "bold" 
-                          }}>
-                            !
-                          </span>
-                          <span>Пожаловаться</span>
-                        </button>
+                        {isEditing ? (
+                          <EditableMessage>
+                            <EditTextarea
+                              value={editingContent}
+                              onChange={(e) => onEditingContentChange(e.target.value)}
+                              autoFocus
+                            />
+                            <EditButtons>
+                              <EditButton className="cancel" onClick={onCancelEdit}>
+                                Отмена
+                              </EditButton>
+                              <EditButton className="save" onClick={() => onSaveEdit(msg.id)}>
+                                Отправить
+                              </EditButton>
+                            </EditButtons>
+                          </EditableMessage>
+                        ) : (
+                          <Message
+                            variant={msg.type}
+                            showReportButton={msg.showReportButton}
+                            onReport={() => onReportMessage(msg)}
+                            sources={msg.sources}
+                            isError={msg.isError}
+                            canRetry={msg.canRetry}
+                            onRetry={msg.canRetry && onRetryMessage ? () => onRetryMessage(msg) : undefined}
+                            isProcessing={msg.isProcessing}
+                          >
+                            {msg.content}
+                          </Message>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {canEdit && !isEditing && (
+                        <MessageEditIcon onClick={() => onStartEditMessage(msg)} title="Редактировать">
+                          ✏️
+                        </MessageEditIcon>
+                      )}
+                    </MessageWrapper>
+                  );
+                })}
               </ChatWindow>
             </ChatWindowWrapper>
             <InputContainer>
+              <ChatSettings>
+                <ToggleContainer>
+                  <ToggleSwitch $active={enableThinking} onClick={onToggleThinking} />
+                  <span>Thinking</span>
+                </ToggleContainer>
+              </ChatSettings>
               <Input
                 placeholder="Спросите что-нибудь..."
                 value={inputValue}
@@ -227,13 +358,26 @@ export function MainPage({
           // Если чат пустой - показываем приветственный экран
           <WelcomeScreen>
             <WelcomeTitle>
-              Добро пожаловать в HR-Guardian!
+              {currentUser?.firstName && currentUser?.lastName
+                ? `Добро пожаловать, ${currentUser.lastName} ${currentUser.firstName}!`
+                : currentUser?.lastName
+                  ? `Добро пожаловать, ${currentUser.lastName}!`
+                  : currentUser?.firstName
+                    ? `Добро пожаловать, ${currentUser.firstName}!`
+                    : 'Добро пожаловать в HR-Guardian!'
+              }
             </WelcomeTitle>
             <WelcomeText>
-              Начните новый диалог с AI-помощником. Задавайте вопросы о кадровой документации, 
+              Начните новый диалог с AI-помощником. Задавайте вопросы о кадровой документации,
               трудовом законодательстве и процессах компании.
             </WelcomeText>
             <WelcomeInputContainer>
+              <ChatSettings>
+                <ToggleContainer>
+                  <ToggleSwitch $active={enableThinking} onClick={onToggleThinking} />
+                  <span>Thinking</span>
+                </ToggleContainer>
+              </ChatSettings>
               <Input
                 placeholder="Спросите что-нибудь..."
                 value={inputValue}

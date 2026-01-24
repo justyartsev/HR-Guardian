@@ -1,4 +1,3 @@
-// Register.jsx
 import styled from 'styled-components';
 import AuthForm from '../../components/AuthForm/AuthForm';
 

@@ -1,446 +1,423 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { MainPage } from "./MainPage";
 import { ReportMessageModal } from "../../components/Modal/ReportMessageModal";
-import { dialogService } from "../../services/dialogService";
+import { Notification } from "../../components/Notification/Notification";
+import { useNotification } from "../../hooks/useNotification";
+import { useChatStreaming } from "../../hooks/useChatStreaming";
+import { useChats } from "../../hooks/useChats";
+import { useNotificationCounts } from "../../hooks/useNotificationCounts";
+import { useUser } from "../../contexts/UserContext";
 import { authService } from "../../services/authService";
-import { queryService } from "../../services/queryService";
-
-// Функция для форматирования имени пользователя
-const formatUserName = (user) => {
-  if (!user) return "Гость";
-  
-  if (user.firstName && user.lastName) {
-    return `${user.lastName} ${user.firstName}`;
-  }
-  
-  if (user.username) {
-    return user.username;
-  }
-  
-  return user.email?.split('@')[0] || "Пользователь";
-};
-
-// Функция для получения следующего номера чата
-const getNextChatNumber = (existingChats) => {
-  const chatNumbers = existingChats
-    .map(chat => {
-      const match = chat.name.match(/^Чат (\d+)$/);
-      return match ? parseInt(match[1]) : 0;
-    })
-    .filter(num => num > 0);
-  
-  return chatNumbers.length > 0 ? Math.max(...chatNumbers) + 1 : 1;
-};
+import { feedbackService } from "../../services/feedbackService";
+import { formatUserName } from "../../utils/userUtils";
 
 export function MainPageContainer() {
   const navigate = useNavigate();
+  const { chatId } = useParams();
+  const queryClient = useQueryClient();
+  const { notification, notify, closeNotification } = useNotification();
+  const { clearUserData } = useUser();
+
+  // Использование кастомных хуков
+  const {
+    chats,
+    setChats,
+    activeChat,
+    activeChatId,
+    setActiveChatId,
+    isLoading,
+    createChat,
+    renameChat,
+    deleteChat
+  } = useChats();
+
+  // Локальные состояния (currentUser нужен для useChatStreaming)
+  const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser());
+  const { pendingUsersCount, newFeedbackCount, refreshCounts } = useNotificationCounts();
   
-  // Состояния
-  const [currentUser, setCurrentUser] = useState(() => {
-    return authService.getCurrentUser();
+  // Настройки чата
+  const [enableThinking, setEnableThinking] = useState(() => {
+    const saved = localStorage.getItem('enableThinking');
+    return saved === 'true';
   });
-  const [chats, setChats] = useState([]);
-  const [activeChatId, setActiveChatId] = useState(null);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingContent, setEditingContent] = useState("");
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+
+  const { sendStreamingMessage, isStreaming } = useChatStreaming({
+    chatId: activeChatId,
+    onUpdateChats: setChats,
+    currentUser,  // Передаём данные пользователя для персонализации в RAG
+    enableThinking  // Режим "размышления" модели
+  });
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  // Получаем отформатированное имя пользователя
-  const userName = formatUserName(currentUser);
+  const userName = formatUserName(currentUser, "Гость");
+  const messages = activeChat?.messages || [];
 
-  // При загрузке проверяем авторизацию и загружаем данные
+  // Сохраняем настройку thinking в localStorage
+  useEffect(() => {
+    localStorage.setItem('enableThinking', enableThinking.toString());
+  }, [enableThinking]);
+
+  // Инициализация при загрузке
   useEffect(() => {
     const init = async () => {
-      // 1. Проверяем токен
+      // Проверяем авторизацию
       if (!authService.isAuthenticated()) {
         navigate('/login');
         return;
       }
 
-      // 2. Получаем данные пользователя
+      // Получаем данные пользователя
       const user = await authService.getCurrentUser();
       if (!user) {
         authService.logout();
         navigate('/login');
         return;
       }
-      
+
       setCurrentUser(user);
-      
-      // 3. Загружаем диалоги пользователя из бэкенда
-      await loadUserDialogs(user.id);
-      
-      setIsLoading(false);
     };
 
     init();
   }, [navigate]);
 
-  // Загрузка диалогов из бэкенда
-  const loadUserDialogs = async (userId) => {
-    setIsLoading(true);
-    setError(null);
+  // Отслеживаем изменения URL (для прямых ссылок на чат)
+  useEffect(() => {
+    // Ждём пока чаты загрузятся перед установкой активного чата из URL
+    if (isLoading) return;
     
-    try {
-      const dialogs = await dialogService.getUserDialogs(userId);
-      
-      // ДИАГНОСТИКА: логируем структуру данных
-      console.log('=== LOADING DIALOGS ===');
-      console.log('User ID:', userId);
-      console.log('Raw dialogs from backend:', dialogs);
-      
-      if (dialogs && dialogs.length > 0) {
-        console.log('First dialog structure:', dialogs[0]);
-        console.log('Dialog keys:', Object.keys(dialogs[0]));
-        
-        // Сортируем диалоги по дате создания (новые сверху)
-        const sortedDialogs = [...dialogs].sort((a, b) => 
-          new Date(b.created_at) - new Date(a.created_at)
-        );
-        
-        // Загружаем существующие чаты из localStorage для сохранения переименований
-        const storedChats = JSON.parse(localStorage.getItem('hrg_chats') || '[]');
-        const storedChatsMap = new Map(storedChats.map(chat => [chat.id, chat]));
-        
-        // Форматируем чаты, сохраняя переименованные названия
-        const formattedChats = await Promise.all(sortedDialogs.map(async (dialog) => {
-          const storedChat = storedChatsMap.get(dialog.id);
-          
-          // Загружаем сообщения для каждого диалога
-          let messages = [];
-          try {
-            const messagesData = await dialogService.getMessages(dialog.id);
-            messages = messagesData.map(msg => ({
-              id: msg.id,
-              type: msg.sender === 'user' ? 'input' : 'output',
-              content: msg.text,
-              showReportButton: msg.sender !== 'user',
-              timestamp: msg.created_at,
-            }));
-            console.log(`Loaded ${messages.length} messages for dialog ${dialog.id}`);
-          } catch (msgError) {
-            console.error(`Error loading messages for dialog ${dialog.id}:`, msgError);
-          }
-          
-          return {
-            id: dialog.id,
-            name: storedChat?.name || dialog.title || `Чат ${getNextChatNumber([])}`,
-            messages: messages,
-          };
-        }));
-        
-        setChats(formattedChats);
-        setActiveChatId(formattedChats[0]?.id || null);
-        
-        // Сохраняем локально как кэш
-        localStorage.setItem('hrg_chats', JSON.stringify(formattedChats));
-      } else {
-        // Нет диалогов - пустой список
-        console.log('No dialogs found for user');
-        setChats([]);
-        setActiveChatId(null);
-        localStorage.removeItem('hrg_chats');
+    if (chatId && chats.length > 0) {
+      const foundChat = chats.find(chat => chat.id === parseInt(chatId));
+      if (foundChat && activeChatId !== foundChat.id) {
+        setActiveChatId(foundChat.id);
       }
-    } catch (error) {
-      console.error('Error loading dialogs:', error);
-      setError('Не удалось загрузить диалоги');
+    }
+  }, [chatId, chats, activeChatId, setActiveChatId, isLoading]);
+
+  // Загружаем сообщения при смене активного чата
+  useEffect(() => {
+    // Флаг для предотвращения race condition
+    let isCancelled = false;
+    
+    const loadMessages = async () => {
+      if (!activeChatId) {
+        setIsLoadingMessages(false);
+        return;
+      }
+
+      setIsLoadingMessages(true);
       
-      // Fallback: пытаемся загрузить из localStorage
       try {
-        const savedChats = localStorage.getItem('hrg_chats');
-        if (savedChats) {
-          const parsedChats = JSON.parse(savedChats);
-          setChats(parsedChats);
-          setActiveChatId(parsedChats[0]?.id || null);
-          console.log('Loaded chats from localStorage fallback');
-        } else {
-          setChats([]);
+        const { dialogService } = await import('../../services/dialogService');
+        const messages = await dialogService.getMessages(activeChatId);
+        
+        // Не обновляем если компонент размонтирован или чат изменился
+        if (isCancelled) return;
+
+        // Преобразуем сообщения в формат UI
+        const formattedMessages = messages.map(msg => ({
+          id: msg.id,
+          type: msg.role === 'user' ? 'input' : 'output',
+          content: msg.content,
+          role: msg.role,
+          timestamp: msg.created_at,
+          sources: msg.sources || [],
+          showReportButton: msg.role === 'assistant'
+        }));
+
+        // Проверяем, если последнее сообщение от пользователя без ответа - добавляем сообщение об ошибке
+        if (formattedMessages.length > 0) {
+          const lastMsg = formattedMessages[formattedMessages.length - 1];
+          if (lastMsg.role === 'user') {
+            formattedMessages.push({
+              id: `error_${Date.now()}`,
+              type: 'output',
+              content: 'Соединение было прервано. Попробуйте отправить запрос повторно.',
+              role: 'assistant',
+              timestamp: new Date().toISOString(),
+              showReportButton: false,
+              isError: true,
+              canRetry: true,
+              originalQuery: lastMsg.content
+            });
+          }
         }
-      } catch (fallbackError) {
-        console.error('Fallback loading error:', fallbackError);
-        setChats([]);
+
+        // Обновляем сообщения в активном чате
+        setChats(prevChats => {
+          const currentChat = prevChats.find(c => c.id === activeChatId);
+          // Не обновляем если сообщения уже загружены
+          if (currentChat?.messages?.length > 0) return prevChats;
+          
+          return prevChats.map(chat =>
+            chat.id === activeChatId
+              ? { ...chat, messages: formattedMessages }
+              : chat
+          );
+        });
+      } catch (error) {
+        // Ignore
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingMessages(false);
+        }
       }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
 
-  // Создание нового чата
-  const handleNewChat = async () => {
-    if (!currentUser?.id) {
-      navigate('/login');
-      return;
-    }
+    loadMessages();
+    
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeChatId, setChats]); // Убрали chats из зависимостей
 
-    setIsLoading(true);
-    
-    try {
-      const nextNumber = getNextChatNumber(chats);
-      const chatName = `Чат ${nextNumber}`;
-      
-      const newDialog = await dialogService.createDialog(chatName, currentUser.id);
-      
-      console.log('New dialog response:', newDialog);
-      
-      const newChat = {
-        id: newDialog.id || newDialog.dialog_id,
-        name: newDialog.title || chatName,
-        messages: [],
-      };
-      
-      // Добавляем новый чат в начало списка
-      const updatedChats = [newChat, ...chats];
-      setChats(updatedChats);
-      setActiveChatId(newChat.id);
-      setInputValue("");
-      
-      // Сохраняем локально
-      localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
-      
-      console.log("Создан новый чат:", newChat.name);
-    } catch (error) {
-      console.error('Error creating chat:', error);
-      setError('Не удалось создать чат');
-      
-      // Fallback: создаем локальный чат
-      const newChatId = Date.now();
-      const nextNumber = getNextChatNumber(chats);
-      const chatName = `Чат ${nextNumber}`;
-      
-      const newChat = {
-        id: newChatId,
-        name: chatName,
-        messages: []
-      };
-      
-      const updatedChats = [newChat, ...chats];
-      setChats(updatedChats);
-      setActiveChatId(newChatId);
-      localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Переименование чата
-  const handleRenameChat = async (chatId, newName) => {
-    try {
-      // Обновляем в бэкенде
-      await dialogService.updateDialogTitle(chatId, newName);
-    } catch (error) {
-      console.error('Error updating chat title in backend:', error);
-    }
-    
-    // Обновляем локально
-    const updatedChats = chats.map(chat => 
-      chat.id === chatId ? { ...chat, name: newName } : chat
-    );
-    
-    setChats(updatedChats);
-    localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
-    
-    console.log(`Чат переименован: ${newName}`);
-  };
-
-  // Удаление чата БЕЗ перенумерации
-  const handleDeleteChat = async (chatId) => {
-    if (chats.length <= 1) {
-      alert("Нельзя удалить последний чат");
-      return;
-    }
-    
-    if (!window.confirm("Вы уверены, что хотите удалить этот чат?")) {
-      return;
-    }
-    
-    try {
-      // Удаляем из бэкенда
-      await dialogService.deleteDialog(chatId);
-    } catch (error) {
-      console.error('Error deleting from backend:', error);
-    }
-    
-    // Удаляем локально БЕЗ перенумерации
-    const updatedChats = chats.filter(chat => chat.id !== chatId);
-    setChats(updatedChats);
-    
-    if (chatId === activeChatId) {
-      setActiveChatId(updatedChats[0]?.id || null);
-    }
-    
-    localStorage.setItem('hrg_chats', JSON.stringify(updatedChats));
-  };
-
-  // Отправка сообщения
+  // Обработчики пользовательских действий
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || !currentUser?.id || !activeChatId) return;
+    console.log('[MAIN] handleSendMessage called', { inputValue, isStreaming, activeChatId });
+
+    if (!inputValue.trim() || isStreaming) return;
 
     const messageText = inputValue.trim();
     setInputValue("");
-    
-    try {
-      // 1. Сохраняем сообщение пользователя в бэкенд
-      const savedMessage = await dialogService.sendMessage(
-        activeChatId, 
-        messageText, 
-        'user'
-      );
-      
-      console.log('Saved user message:', savedMessage);
-      
-      // 2. Обновляем локальное состояние
-      setChats(prev => prev.map(chat => 
-        chat.id === activeChatId 
-          ? { 
-              ...chat, 
-              messages: [...chat.messages, {
-                id: savedMessage.id,
-                type: "input",
-                content: savedMessage.text,
-                showReportButton: false,
-                timestamp: savedMessage.created_at,
-              }]
-            } 
-          : chat
-      ));
-      
-      // 3. Обновляем localStorage
-      updateLocalStorage();
-      
- // 3. ПОЛУЧАЕМ РЕАЛЬНЫЙ ОТВЕТ ОТ НЕЙРОННОЙ СЕТИ
-    try {
-      console.log('Sending query to AI service...');
-      const aiResponse = await queryService.processQuery(activeChatId, messageText);
-      
-      console.log('AI response received:', aiResponse);
-      
-      // Сохраняем ответ AI в бэкенд
-      const aiMessage = await dialogService.sendMessage(
-        activeChatId, 
-        aiResponse.answer || aiResponse.text || aiResponse, 
-        'ai'
-      );
-      
-      // Обновляем UI с ответом AI
-      setChats(prev => prev.map(chat => 
-        chat.id === activeChatId 
-          ? { 
-              ...chat, 
-              messages: [...chat.messages, {
-                id: aiMessage.id,
-                type: "output",
-                content: aiMessage.text,
-                showReportButton: true,
-                timestamp: aiMessage.created_at,
-              }]
-            } 
-          : chat
-      ));
-      
-      updateLocalStorage();
-      
-    } catch (aiError) {
-      console.error('Error getting AI response:', aiError);
-      
-      // Fallback: стандартный ответ
-      const fallbackResponse = `Извините, не удалось получить ответ от нейронной сети. Ошибка: ${aiError.message}`;
-      
-      const aiMessage = await dialogService.sendMessage(
-        activeChatId, 
-        fallbackResponse, 
-        'ai'
-      );
-      
-      setChats(prev => prev.map(chat => 
-        chat.id === activeChatId 
-          ? { 
-              ...chat, 
-              messages: [...chat.messages, {
-                id: aiMessage.id,
-                type: "output",
-                content: aiMessage.text,
-                showReportButton: true,
-                timestamp: aiMessage.created_at,
-              }]
-            } 
-          : chat
-      ));
-      
-      updateLocalStorage();
-    }
-    
-  } catch (error) {
-    console.error('Error in send message flow:', error);
-        // Если это 401, просто покажем ошибку
-    if (error.response?.status === 401) {
-      setError(`Ошибка авторизации (401) при запросе к: ${error.config?.url}`);
-    } else {
-      setError('Не удалось отправить сообщение');
-    }
-   
-    
-    // Fallback логика
-    const userMessage = {
-      id: Date.now(),
-      type: "input",
-      content: messageText,
-      showReportButton: false,
-      timestamp: new Date().toISOString(),
-    };
-    
-    setChats(prev => prev.map(chat => 
-      chat.id === activeChatId 
-        ? { ...chat, messages: [...chat.messages, userMessage] }
-        : chat
-    ));
-    
-    updateLocalStorage();
-  }
-};
 
-  // Вспомогательная функция
-  const updateLocalStorage = () => {
     try {
-      localStorage.setItem('hrg_chats', JSON.stringify(chats));
+      // Если нет активного чата — создаём новый
+      let targetChatId = activeChatId;
+      console.log('[MAIN] Current targetChatId:', targetChatId);
+
+      if (!targetChatId) {
+        console.log('[MAIN] Creating new chat...');
+        targetChatId = await createChat();
+        console.log('[MAIN] New chat created:', targetChatId);
+      }
+
+      // СНАЧАЛА сохраняем сообщение пользователя в БД
+      console.log('[MAIN] Saving user message to DB...', { targetChatId, messageText, role: 'user' });
+      const { dialogService } = await import('../../services/dialogService');
+      const userMessage = await dialogService.sendMessage(targetChatId, messageText, 'user');
+      console.log('[MAIN] User message saved:', userMessage);
+
+      // Добавляем сохранённое сообщение пользователя в UI
+      let currentMessages = [];
+      setChats(prevChats =>
+        prevChats.map(chat => {
+          if (chat.id === targetChatId) {
+            currentMessages = chat.messages; // Сохраняем текущие сообщения для контекста
+            return {
+              ...chat,
+              messages: [
+                ...chat.messages,
+                {
+                  id: userMessage.id,
+                  type: "input",
+                  content: messageText,
+                  timestamp: userMessage.created_at,
+                  role: "user"
+                }
+              ]
+            };
+          }
+          return chat;
+        })
+      );
+
+      // Отправляем с контекстом последних сообщений
+      await sendStreamingMessage(messageText, targetChatId, currentMessages);
     } catch (error) {
-      console.error('Error updating localStorage:', error);
+      notify({
+        message: "Ошибка отправки сообщения",
+        type: "error"
+      });
     }
   };
 
-  // Обработчик выбора чата с загрузкой сообщений
-  const handleChatSelect = async (chat) => {
-    console.log('Selecting chat:', chat.id);
-    setActiveChatId(chat.id);
-    setInputValue("");
+  const handleNewChat = async () => {
+    try {
+      // Очищаем состояние редактирования и ввода
+      setEditingMessageId(null);
+      setEditingContent("");
+      setInputValue("");
+      
+      // Очищаем активный чат и сообщения
+      setActiveChatId(null);
+      
+      // Навигируем на главную страницу (без ID чата)
+      navigate("/chat");
+      
+      // ПОСЛЕ навигации создаём новый чат
+      const newChatId = await createChat();
+      
+      // Очищаем сообщения в новом чате
+      setChats(prevChats =>
+        prevChats.map(chat =>
+          chat.id === newChatId ? { ...chat, messages: [] } : chat
+        )
+      );
+      
+      // Устанавливаем активный чат
+      setActiveChatId(newChatId);
+      navigate(`/chat/${newChatId}`);
+    } catch (error) {
+      notify({
+        message: "Не удалось создать новый чат",
+        type: "error"
+      });
+    }
+  };
+
+  // Повтор последнего сообщения при ошибке
+  const handleRetryMessage = async (errorMessage) => {
+    console.log('[MAIN] handleRetryMessage called', { errorMessage, activeChatId, isStreaming });
+
+    if (!errorMessage?.originalQuery) {
+      notify({
+        message: "Невозможно повторить запрос",
+        type: "error"
+      });
+      return;
+    }
+
+    const originalQuery = errorMessage.originalQuery;
+    console.log('[MAIN] Retrying query:', originalQuery);
+
+    // Удаляем сообщение об ошибке из чата и получаем текущие сообщения
+    let currentMessages = [];
+    setChats(prevChats =>
+      prevChats.map(chat => {
+        if (chat.id === activeChatId) {
+          const filteredMessages = chat.messages.filter(msg => msg.id !== errorMessage.id);
+          currentMessages = filteredMessages;
+          return {
+            ...chat,
+            messages: filteredMessages
+          };
+        }
+        return chat;
+      })
+    );
+
+    console.log('[MAIN] Current messages for context:', currentMessages.length);
+
+    // Повторно отправляем запрос с контекстом
+    try {
+      console.log('[MAIN] Calling sendStreamingMessage...');
+      await sendStreamingMessage(originalQuery, activeChatId, currentMessages);
+    } catch (error) {
+      console.error('[MAIN] Error in sendStreamingMessage:', error);
+    }
+  };
+
+  // Начать редактирование сообщения
+  const handleStartEditMessage = (message) => {
+    if (message.type !== 'input' || isStreaming) return;
+    setEditingMessageId(message.id);
+    setEditingContent(message.content);
+  };
+
+  // Отмена редактирования
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditingContent("");
+  };
+
+  // Сохранение отредактированного сообщения и повторная отправка
+  const handleSaveEdit = async (messageId) => {
+    if (!editingContent.trim() || isStreaming) return;
+
+    const newContent = editingContent.trim();
     
-    // Загружаем сообщения для выбранного чата
-    if (chat.id) {
-      try {
-        console.log('Loading messages for chat:', chat.id);
-        const messages = await dialogService.getMessages(chat.id);
-        console.log('Loaded messages:', messages);
-        
-        // Обновляем чат с загруженными сообщениями
-        setChats(prev => prev.map(c => 
-          c.id === chat.id 
-            ? { 
-                ...c, 
-                messages: messages.map(msg => ({
-                  id: msg.id,
-                  type: msg.sender === 'user' ? 'input' : 'output',
-                  content: msg.text,
-                  showReportButton: msg.sender !== 'user',
-                  timestamp: msg.created_at,
-                }))
-              } 
-            : c
-        ));
-      } catch (error) {
-        console.error('Error loading messages:', error);
+    // Находим индекс редактируемого сообщения
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    // Удаляем все сообщения после редактируемого (включая ответы)
+    // и обновляем текст редактируемого сообщения
+    let messagesBeforeEdit = [];
+    setChats(prevChats =>
+      prevChats.map(chat => {
+        if (chat.id === activeChatId) {
+          const newMessages = chat.messages.slice(0, messageIndex);
+          messagesBeforeEdit = newMessages;
+          return {
+            ...chat,
+            messages: [
+              ...newMessages,
+              {
+                ...chat.messages[messageIndex],
+                content: newContent
+              }
+            ]
+          };
+        }
+        return chat;
+      })
+    );
+
+    setEditingMessageId(null);
+    setEditingContent("");
+
+    // Обновляем сообщение в БД
+    try {
+      const { dialogService } = await import('../../services/dialogService');
+      await dialogService.updateMessage(messageId, newContent);
+    } catch (error) {
+      // Ignore DB error, continue with streaming
+    }
+
+    // Отправляем новый запрос
+    try {
+      await sendStreamingMessage(newContent, activeChatId, messagesBeforeEdit);
+    } catch (error) {
+      // Ignore
+    }
+  };
+
+  // Переключение режима thinking
+  const handleToggleThinking = () => {
+    setEnableThinking(prev => !prev);
+  };
+
+  const handleChatSelect = (chatId) => {
+    setActiveChatId(chatId);
+    navigate(`/chat/${chatId}`);
+  };
+
+  const handleRenameChat = async (chatId, newName) => {
+    try {
+      await renameChat(chatId, newName);
+      notify({
+        message: "Чат переименован",
+        type: "success"
+      });
+    } catch (error) {
+      notify({
+        message: "Не удалось переименовать чат",
+        type: "error"
+      });
+    }
+  };
+
+  const handleDeleteChat = async (chatId) => {
+    try {
+      await deleteChat(chatId);
+      if (activeChatId === chatId) {
+        navigate("/");
       }
+      notify({
+        message: "Чат удалён",
+        type: "success"
+      });
+    } catch (error) {
+      notify({
+        message: "Не удалось удалить чат",
+        type: "error"
+      });
     }
   };
 
@@ -449,84 +426,124 @@ export function MainPageContainer() {
     setIsReportModalOpen(true);
   };
 
-  const handleSubmitReport = (reportData) => {
-    console.log("Жалоба отправлена:", reportData);
-    alert(`Жалоба отправлена!`);
+  const handleSubmitReport = async (reportData) => {
+    try {
+      await feedbackService.submitReport(selectedMessage.id, {
+        dialog_id: activeChatId,
+        comment: reportData.comment || '',
+        rating: null
+      });
+
+      notify({
+        message: "Спасибо за обратную связь!",
+        type: "success"
+      });
+      setIsReportModalOpen(false);
+      setSelectedMessage(null);
+
+      refreshCounts();
+      queryClient.invalidateQueries({ queryKey: ['feedback'] });
+    } catch (error) {
+      notify({
+        message: "Ошибка при отправке отзыва",
+        type: "error"
+      });
+    }
+  };
+
+  const handleLogout = () => {
+    // Очищаем данные через централизованные функции
+    authService.logout();
+    clearUserData();
+    // Используем React Router для навигации (без перезагрузки страницы)
+    navigate('/login', { replace: true });
   };
 
   const handleInputChange = (value) => {
     setInputValue(value);
   };
 
-  const handleTabChange = (tab) => {
-    if (tab === "knowledge") {
-      navigate("/knowledge-base");
-    } else if (tab === "queries") {
-      navigate("/query-log");
-    } else if (tab === "chat") {
-      navigate("/chat");
+  const handleUpdateProfile = async ({ firstName, lastName, position, department }) => {
+    try {
+      const updatedUser = await authService.updateProfile({ firstName, lastName, position, department });
+      setCurrentUser(updatedUser);
+      notify({
+        message: "Профиль обновлён",
+        type: "success"
+      });
+    } catch (error) {
+      notify({
+        message: "Не удалось обновить профиль",
+        type: "error"
+      });
     }
   };
 
-  // Функция выхода
-  const handleLogout = () => {
-    authService.logout();
-    window.location.href = '/login';
+  // Навигация между вкладками
+  const handleTabChange = (tabName) => {
+    switch (tabName) {
+      case 'knowledge':
+        navigate('/knowledge-base');
+        break;
+      case 'queries':
+        navigate('/query-log');
+        break;
+      case 'users':
+        navigate('/users');
+        break;
+      case 'chat':
+      default:
+        navigate('/chat');
+        break;
+    }
   };
-
-  // Получаем активный чат
-  const activeChat = chats.find(chat => chat.id === activeChatId);
-  const messages = activeChat?.messages || [];
 
   return (
     <>
-      {error && (
-        <div style={{
-          position: 'fixed',
-          top: '10px',
-          right: '10px',
-          background: 'var(--secondary-red-1)',
-          color: 'white',
-          padding: '1rem',
-          borderRadius: '5px',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem'
-        }}>
-          <span>{error}</span>
-          <button 
-            onClick={() => setError(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'white',
-              cursor: 'pointer',
-              fontSize: '1.6rem'
-            }}
-          >
-            ×
-          </button>
-        </div>
+      {notification && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          onClose={closeNotification}
+        />
       )}
-      
+
       <MainPage
         inputValue={inputValue}
         messages={messages}
         chats={chats}
         currentUser={currentUser}
         userName={userName}
+        firstName={currentUser?.firstName || ""}
+        lastName={currentUser?.lastName || ""}
+        position={currentUser?.position || ""}
+        department={currentUser?.department || ""}
         activeChatId={activeChatId}
         onInputChange={handleInputChange}
         onSendMessage={handleSendMessage}
         onReportMessage={handleReportMessage}
         onNewChat={handleNewChat}
         onChatSelect={handleChatSelect}
-        onTabChange={handleTabChange}
         onRenameChat={handleRenameChat}
         onDeleteChat={handleDeleteChat}
+        onUpdateProfile={handleUpdateProfile}
+        onTabChange={handleTabChange}
+        onRetryMessage={handleRetryMessage}
         onLogout={handleLogout}
         isLoading={isLoading}
+        isLoadingMessages={isLoadingMessages}
+        isStreamingResponse={isStreaming}
+        pendingUsersCount={pendingUsersCount}
+        newFeedbackCount={newFeedbackCount}
+        // Новые props для thinking и редактирования
+        enableThinking={enableThinking}
+        onToggleThinking={handleToggleThinking}
+        editingMessageId={editingMessageId}
+        editingContent={editingContent}
+        onEditingContentChange={setEditingContent}
+        onStartEditMessage={handleStartEditMessage}
+        onCancelEdit={handleCancelEdit}
+        onSaveEdit={handleSaveEdit}
       />
 
       <ReportMessageModal

@@ -8,7 +8,7 @@ const LayoutContainer = styled.div`
   background-color: var(--primary-black-2);
   color: var(--primary-white-1);
   width: 100vw;
-  overflow-x: hidden;
+  /* overflow-x: hidden удален - блокирует прокрутку таблиц */
 `;
 
 const MainContent = styled.main`
@@ -50,7 +50,10 @@ export function QueryLogPage({
   onChatSelect,
   onRenameChat, 
   onDeleteChat,
-  onDeleteComplaint 
+  onDeleteComplaint,
+  onViewComplaint,
+  pendingUsersCount = 0,
+  newFeedbackCount = 0
 }) {
   const handleTabChange = (tab) => {
     if (onTabChange) onTabChange(tab);
@@ -68,6 +71,10 @@ export function QueryLogPage({
     if (onDeleteComplaint) onDeleteComplaint(complaint);
   };
 
+  const handleViewComplaint = (complaint) => {
+    if (onViewComplaint) onViewComplaint(complaint);
+  };
+
   return (
     <LayoutContainer>
       <SideMenu 
@@ -76,18 +83,22 @@ export function QueryLogPage({
         chats={chats}
         onNewChat={handleNewChat}
         username={userInfo?.username || "Пользователь"}
+        userRole={userInfo?.role}
         onChatSelect={handleChatSelect}
-        onRenameChat={onRenameChat} // Передаем
+        onRenameChat={onRenameChat}
         onDeleteChat={onDeleteChat}
+        pendingUsersCount={pendingUsersCount}
+        newFeedbackCount={newFeedbackCount}
       />
       
       <MainContent>
-        <Title>Журнал запросов</Title>
+        <Title>Журнал жалоб</Title>
         
         <ContentWrapper>
           <Table 
             data={complaints}
             type="complaints"
+            onView={handleViewComplaint}
             onDelete={handleDeleteComplaint}
           />
         </ContentWrapper>

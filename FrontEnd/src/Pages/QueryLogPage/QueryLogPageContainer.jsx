@@ -1,226 +1,122 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, Navigate } from "react-router-dom";
 import { QueryLogPage } from "./QueryLogPage";
 import { DeleteDocumentModal } from "../../components/Modal/DeleteDocumentModal";
-import { dialogService } from "../../services/dialogService";
-import { authService } from "../../services/authService";
-//import { useUser } from "../../contexts/UserContext";
+import { ViewFeedbackModal } from "../../components/Modal/ViewFeedbackModal";
+import { Notification } from "../../components/Notification/Notification";
+import { useChats } from "../../hooks/useChats";
+import { useFeedback } from "../../hooks/useFeedback";
+import { useNotification } from "../../hooks/useNotification";
+import { useNotificationCounts } from "../../hooks/useNotificationCounts";
+import { useAuth } from "../../hooks/useAuth";
+import { formatUserName } from "../../utils/userUtils";
 
 export function QueryLogPageContainer() {
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState(() => {
-    return authService.getCurrentUser();
+  const { notification, notify, closeNotification } = useNotification();
+  const { pendingUsersCount, newFeedbackCount, refreshCounts } = useNotificationCounts();
+
+  // Авторизация с проверкой роли
+  const { currentUser, isAuthenticated, isHR } = useAuth({
+    requiredRoles: ['hr', 'admin']
   });
-  // Состояния для жалоб
-  const [complaints, setComplaints] = useState([
-    { name: "Жалоба №124", date: "21.06.2025", user: "Петров Петр Петрович", id: 1 },
-    { name: "Жалоба №124", date: "21.06.2025", user: "Петров Петр Петрович", id: 2 },
-    { name: "Жалоба №124", date: "21.06.2025", user: "Петров Петр Петрович", id: 3 },
-    { name: "Жалоба №124", date: "21.06.2025", user: "Петров Петр Петрович", id: 4 },
-  ]);
 
-  // Получаем текущего пользователя
-  /*const [currentUser, setCurrentUser] = useState(() => {
-    const user = authService.getCurrentUser();
-    // Если нет пользователя в localStorage, используем данные из токена
-    if (!user && authService.isAuthenticated()) {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        try {
-          const base64Url = token.split('.')[1];
-          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-          const payload = JSON.parse(window.atob(base64));
-          
-          return {
-            id: parseInt(payload.sub),
-            username: payload.username || '',
-            email: payload.email || '',
-            firstName: payload.first_name || '',
-            lastName: payload.last_name || '',
-            role: payload.role || 'employee',
-          };
-        } catch (error) {
-          console.error('Error decoding token:', error);
-        }
-      }
-    }
-    return user;
-  });*/
+  // Данные из React Query (кэшируются между страницами)
+  const { chats, isLoading: chatsLoading, createChat, renameChat, deleteChat } = useChats();
+  const { complaints, isLoading: feedbackLoading, deleteFeedback, updateStatus } = useFeedback();
 
-  // Состояние для чатов
-  const [chats, setChats] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
+  // Модальные окна
   const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
-  // Функция для форматирования имени пользователя
-    const formatUserName = (user) => {
-    if (!user) return "Пользователь";
-    
-    if (user.firstName && user.lastName) {
-      return `${user.lastName} ${user.firstName}`;
-    }
-    
-    if (user.username) {
-      return user.username;
-    }
-    
-    return user.email?.split('@')[0] || "Пользователь";
-  };
+  // Редирект если не авторизован или нет прав
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isHR) return <Navigate to="/chat" replace />;
 
   const userName = formatUserName(currentUser);
-  console.log("currentUser:", currentUser);
-  console.log("formatted userName:", userName);
+  const isLoading = chatsLoading || feedbackLoading;
 
-
-
-  // Загружаем данные при монтировании
-  useEffect(() => {
-    const loadData = async () => {
-      if (!authService.isAuthenticated()) {
-        navigate('/login');
-        return;
-      }
-      
-      const user = authService.getCurrentUser();
-      if (user) {
-        setCurrentUser(user);
-        
-        // Загружаем чаты
-      try {
-          const dialogs = await dialogService.getUserDialogs(user.id);
-          if (dialogs && dialogs.length > 0) {
-            const sortedDialogs = [...dialogs].sort((a, b) => 
-              new Date(b.created_at) - new Date(a.created_at)
-            );
-            
-            // Загружаем переименованные чаты из localStorage
-            const storedChats = JSON.parse(localStorage.getItem('hrg_chats') || '[]');
-            const storedChatsMap = new Map(storedChats.map(chat => [chat.id, chat]));
-            
-            const formattedChats = sortedDialogs.map(dialog => {
-              const storedChat = storedChatsMap.get(dialog.id);
-              return {
-                id: dialog.id,
-                name: storedChat?.name || dialog.title || `Чат ${dialog.id}`,
-                messages: []
-              };
-            });
-            
-            setChats(formattedChats);
-          }
-        } catch (error) {
-          console.error('Error loading dialogs:', error);
-        }
-      }
-      
-      setIsLoading(false);
-    };
-    
-    loadData();
-  }, [navigate]);
-
-  // Создание нового чата
+  // Обработчики чатов
   const handleNewChat = async () => {
-    if (!currentUser?.id) {
-      navigate('/login');
-      return;
-    }
-
     try {
-      // Генерируем имя для нового чата
-      const chatName = `Чат ${chats.length + 1}`;
-      
-      const newDialog = await dialogService.createDialog(
-        chatName,
-        currentUser.id
-      );
-      
-      const newChat = {
-        id: newDialog.id,
-        name: chatName,
-        messages: [],
-      };
-      
-      // Добавляем новый чат в начало списка
-      const updatedChats = [newChat, ...chats];
-      setChats(updatedChats);
-      
-      // Переходим в чат
+      await createChat();
       navigate('/chat');
-      
     } catch (error) {
-      console.error('Error creating chat:', error);
+      notify({ message: "Не удалось создать чат", type: "error" });
     }
   };
 
-  // Выбор чата
-  const handleChatSelect = (chat) => {
-    console.log("Выбран чат:", chat);
-    // Переходим в чат
-    navigate('/chat');
-  };
+  const handleChatSelect = (chatId) => navigate(`/chat/${chatId}`);
 
-  // Переименование чата
-  const handleRenameChat = (chatId, newName) => {
-    const updatedChats = chats.map(chat => 
-      chat.id === chatId ? { ...chat, name: newName } : chat
-    );
-    setChats(updatedChats);
-    console.log(`Чат ${chatId} переименован в:`, newName);
-  };
-
-  // Удаление чата
-  const handleDeleteChat = async (chatId) => {
-    if (chats.length <= 1) {
-      alert("Нельзя удалить последний чат");
-      return;
-    }
-    
+  const handleRenameChat = async (chatId, newName) => {
     try {
-      await dialogService.deleteDialog(chatId);
-      
-      const updatedChats = chats.filter(chat => chat.id !== chatId);
-      setChats(updatedChats);
-      
-      console.log("Удален чат:", chatId);
+      await renameChat(chatId, newName);
     } catch (error) {
-      console.error('Error deleting chat:', error);
+      notify({ message: "Не удалось переименовать чат", type: "error" });
     }
   };
 
-  // Обработчик смены вкладок с навигацией
+  const handleDeleteChat = async (chatId) => {
+    try {
+      await deleteChat(chatId);
+    } catch (error) {
+      notify({ message: "Не удалось удалить чат", type: "error" });
+    }
+  };
+
+  // Навигация
   const handleTabChange = (tab) => {
-    if (tab === "chat") {
-      navigate("/chat");
-    } else if (tab === "knowledge") {
-      navigate("/knowledge-base");
-    }
+    const routes = { chat: "/chat", knowledge: "/knowledge-base", users: "/users" };
+    if (routes[tab]) navigate(routes[tab]);
   };
 
-  // Обработчик открытия модалки удаления
+  // Обработчики жалоб
   const handleDeleteComplaint = (complaint) => {
     setSelectedComplaint(complaint);
     setIsDeleteModalOpen(true);
   };
 
-  // Обработчик подтверждения удаления
-  const handleConfirmDelete = (complaint) => {
-    console.log("Удаление жалобы:", complaint);
-    
-    setComplaints(prev => prev.filter(item => item.id !== complaint.id));
-    alert(`Жалоба "${complaint.name}" удалена!`);
+  const handleViewComplaint = (complaint) => {
+    setSelectedComplaint(complaint);
+    setIsViewModalOpen(true);
+  };
+
+  const handleConfirmDelete = async (complaint) => {
+    try {
+      await deleteFeedback(complaint.id);
+      refreshCounts();
+      notify({ message: "Жалоба удалена", type: "success" });
+    } catch (error) {
+      notify({ message: "Не удалось удалить жалобу", type: "error" });
+    }
+  };
+
+  const handleStatusChange = async (feedbackId, newStatus) => {
+    try {
+      await updateStatus(feedbackId, newStatus);
+      if (selectedComplaint?.id === feedbackId) {
+        setSelectedComplaint(prev => ({ ...prev, status: newStatus }));
+      }
+      refreshCounts();
+    } catch (error) {
+      notify({ message: "Не удалось обновить статус жалобы", type: "error" });
+    }
   };
 
   return (
     <>
+      {notification && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          onClose={closeNotification}
+        />
+      )}
+
       <QueryLogPage
         complaints={complaints}
-        userInfo={{
-          username: userName,
-          ...currentUser
-        }}
+        userInfo={{ ...currentUser, username: userName }}
         onTabChange={handleTabChange}
         chats={chats}
         onNewChat={handleNewChat}
@@ -228,10 +124,19 @@ export function QueryLogPageContainer() {
         onRenameChat={handleRenameChat}
         onDeleteChat={handleDeleteChat}
         onDeleteComplaint={handleDeleteComplaint}
+        onViewComplaint={handleViewComplaint}
         isLoading={isLoading}
+        pendingUsersCount={pendingUsersCount}
+        newFeedbackCount={newFeedbackCount}
       />
 
-      {/* Модальное окно удаления жалобы */}
+      <ViewFeedbackModal
+        isOpen={isViewModalOpen}
+        onClose={() => setIsViewModalOpen(false)}
+        feedback={selectedComplaint}
+        onStatusChange={handleStatusChange}
+      />
+
       <DeleteDocumentModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}

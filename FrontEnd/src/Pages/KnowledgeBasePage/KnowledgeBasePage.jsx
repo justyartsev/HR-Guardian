@@ -9,7 +9,7 @@ const LayoutContainer = styled.div`
   background-color: var(--primary-black-2);
   color: var(--primary-white-1);
   width: 100vw;
-  overflow-x: hidden;
+  /* overflow-x: hidden удален - блокирует прокрутку таблиц */
 `;
 
 const MainContent = styled.main`
@@ -24,6 +24,14 @@ const MainContent = styled.main`
     var(--primary-black-3) 100%
   );
   min-height: 100vh;
+  
+  @media (max-width: 768px) {
+    padding: 1.5rem 1.5rem;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 1rem 1rem;
+  }
 `;
 
 const Title = styled.h1`
@@ -33,6 +41,20 @@ const Title = styled.h1`
   font-weight: 600;
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--primasy-stroke-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  
+  @media (max-width: 768px) {
+    font-size: 2.4rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 1.8rem;
+    margin-bottom: 1rem;
+    white-space: normal;
+  }
 `;
 
 const ContentWrapper = styled.div`
@@ -42,6 +64,16 @@ const ContentWrapper = styled.div`
   gap: 2rem;
 `;
 
+const SectionTitle = styled.h2`
+  font-size: 1.4rem;
+  color: var(--primary-white-1);
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--primasy-stroke-1);
+`;
+
 const AddButtonWrapper = styled.div`
   margin-top: 2rem;
   display: flex;
@@ -49,7 +81,8 @@ const AddButtonWrapper = styled.div`
 `;
 
 export function KnowledgeBasePage({ 
-  documents, 
+  documents,
+  pendingDocuments,
   userInfo, 
   onTabChange, 
   chats, 
@@ -59,7 +92,11 @@ export function KnowledgeBasePage({
   onDeleteChat,
   onEditDocument,
   onDeleteDocument,
-  onAddDocument 
+  onPreviewDocument,
+  onCancelUpdate,
+  onAddDocument,
+  pendingUsersCount = 0,
+  newFeedbackCount = 0
 }) {
   const handleTabChange = (tab) => {
     if (onTabChange) onTabChange(tab);
@@ -81,6 +118,10 @@ export function KnowledgeBasePage({
     if (onDeleteDocument) onDeleteDocument(document);
   };
 
+  const handlePreviewDocument = (document) => {
+    if (onPreviewDocument) onPreviewDocument(document);
+  };
+
   const handleAddDocument = () => {
     if (onAddDocument) onAddDocument();
   };
@@ -93,21 +134,64 @@ export function KnowledgeBasePage({
         chats={chats}
         onNewChat={handleNewChat}
         username={userInfo?.username || "Пользователь"}
+        userRole={userInfo?.role}
         onChatSelect={handleChatSelect}
-        onRenameChat={onRenameChat} // Передаем
+        onRenameChat={onRenameChat}
         onDeleteChat={onDeleteChat}
+        pendingUsersCount={pendingUsersCount}
+        newFeedbackCount={newFeedbackCount}
       />
       
       <MainContent>
         <Title>База знаний</Title>
         
         <ContentWrapper>
-          <Table 
-            data={documents}
-            type="documents"
-            onEdit={handleEditDocument}
-            onDelete={handleDeleteDocument}
-          />
+          {/* Активные документы */}
+          <div>
+            <SectionTitle>Активные документы</SectionTitle>
+            {documents && documents.length > 0 ? (
+              <Table 
+                data={documents}
+                type="documents"
+                onEdit={handleEditDocument}
+                onDelete={handleDeleteDocument}
+                onPreview={handlePreviewDocument}
+              />
+            ) : (
+              <div style={{ 
+                padding: '2rem',
+                textAlign: 'center',
+                color: 'rgba(255, 255, 255, 0.5)',
+                fontSize: '1.4rem'
+              }}>
+                Нет документов
+              </div>
+            )}
+          </div>
+
+          {/* Ожидающие активации документы */}
+          <div>
+            <SectionTitle>Ожидающие активации</SectionTitle>
+            {pendingDocuments && pendingDocuments.length > 0 ? (
+              <Table 
+                data={pendingDocuments}
+                type="documents"
+                onEdit={handleEditDocument}
+                onDelete={handleDeleteDocument}
+                onPreview={handlePreviewDocument}
+                onCancelUpdate={onCancelUpdate}
+              />
+            ) : (
+              <div style={{ 
+                padding: '2rem',
+                textAlign: 'center',
+                color: 'rgba(255, 255, 255, 0.5)',
+                fontSize: '1.4rem'
+              }}>
+                Нет документов
+              </div>
+            )}
+          </div>
           
           <AddButtonWrapper>
             <Button 
