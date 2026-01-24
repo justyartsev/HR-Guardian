@@ -1,18 +1,12 @@
-FROM debian:12-slim
+FROM ollama/ollama:latest
 
 WORKDIR /app
 
-COPY ./ ./
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
-RUN echo '#!/bin/sh\n\nollama serve &\nsleep 10\nollama pull gemma2:2b\nkill $(pidof ollama)\n' > /app/script.sh
-RUN ["apt-get", "update"]
-RUN ["apt-get", "install", "curl", "-y"]
-
-RUN curl -fsSL https://ollama.com/install.sh | sh
-
-RUN ["/bin/bash", "/app/script.sh"]
-
-ENV OLLAMA_HOST=http://0.0.0.0:11434
+ENV OLLAMA_HOST=0.0.0.0:11434
 
 EXPOSE 11434
-ENTRYPOINT [ "ollama", "serve" ]
+
+ENTRYPOINT ["/app/entrypoint.sh"]

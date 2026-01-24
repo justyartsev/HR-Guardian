@@ -1,3 +1,20 @@
+# Исключаем кеш моделей и большие артефакты из build context
+models_cache/
+*.safetensors
+*.pt
+*.bin
+*.ckpt
+*.tar.gz
+__pycache__/
+.git
+*.cache
+
+# node / frontend
+node_modules/
+
+# OS
+.DS_Store
+thumbs.db
 __pycache__
 vectordb
 .venv

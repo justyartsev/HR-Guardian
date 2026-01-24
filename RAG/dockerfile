@@ -4,12 +4,21 @@ WORKDIR /app
 
 COPY ./requirements.txt ./
 
-RUN pip install --no-input -r requirements.txt
+# ВАЖНО: Сначала ставим PyTorch CPU-only (гораздо легче чем с CUDA)
+# Это сэкономит ~2 GB места в образе!
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Потом ставим остальные зависимости
+RUN pip install --no-cache-dir --no-input -r requirements.txt
 
 COPY ./ ./
 
-RUN mkdir vectordb
+RUN mkdir -p vectordb
+
+# Копируем и настраиваем entrypoint
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 9000
 
-ENTRYPOINT [ "uvicorn", "--host", "0.0.0.0", "--port", "9000", "--reload", "--forwarded-allow-ips", "'*'", "main:app"]
+ENTRYPOINT ["/app/entrypoint.sh"]
