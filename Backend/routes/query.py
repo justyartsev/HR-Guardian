@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db
 import crud.dialog as crud_dialog
@@ -8,13 +9,16 @@ from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 from core.config import settings
+from core.jwt import decode_token
+import json
+import asyncio
+import time
 from models.user import User as UserModel
 from dependencies.user import get_current_user, check_resource_ownership
 
 router = APIRouter(prefix="/query", tags=["Query"])
 
 
-# ====================== PYDANTIC МОДЕЛИ ======================
 class PersonalData(BaseModel):
     """Персональные данные пользователя"""
     full_name: Optional[str] = None
@@ -29,6 +33,16 @@ class QueryRequest(BaseModel):
     dialog_id: Optional[int] = None  # ID диалога
     personal_data: Optional[PersonalData] = None  # персональные данные пользователя
     context: Optional[List[dict]] = None  # История диалога (заполняется Backend перед отправкой в RAG)
+    enable_thinking: bool = False  # Режим "thinking" для модели (управляется пользователем)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "Какой размер отпуска в компании?",
+                "dialog_id": 1,
+                "enable_thinking": False
+            }
+        }
 
 
 class QueryResponse(BaseModel):
@@ -38,9 +52,7 @@ class QueryResponse(BaseModel):
     dialog_id: int  # ID диалога
 
 
-# ====================== ENDPOINTS ======================
-
-@router.post("", response_model=QueryResponse)
+@router.post("/", response_model=QueryResponse)
 async def process_query(
     request: QueryRequest,
     db: Session = Depends(get_db),
@@ -56,6 +68,12 @@ async def process_query(
     4. Сохранить оба сообщения (user + bot)
     5. Вернуть ответ
     """
+    # Валидация входных данных
+    if not request.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    if len(request.query) > 2000:
+        raise HTTPException(status_code=400, detail="Query is too long (max 2000 characters)")
+    
     user_id = current_user.id
     
     # Получить или создать диалог
@@ -71,78 +89,44 @@ async def process_query(
         )
         dialog = crud_dialog.create_dialog(db, dialog_create)
     
-    # Получить последние 10 сообщений для контекста (возвращаются в обратном порядке)
+    # Получить последние 10 сообщений для контекста
     context_messages = crud_dialog.get_messages(db, dialog.id, limit=10)
-    
-    # Подготовить контекст для RAG (в прямом хронологическом порядке для корректной истории диалога)
-    # ⚠️ Ограничиваем размер контекста чтобы не превышать token limit LLM
-    context_history = []
-    total_chars = 0
-    max_context_chars = 2000  # ~500 tokens (примерно)
-    
-    for msg in reversed(context_messages):
-        msg_dict = {
-            "role": "assistant" if msg.role == "bot" else "user",
-            "content": msg.content
-        }
-        msg_chars = len(msg.content)
-        
-        # Если добавление этого сообщения превысит лимит - не добавляем
-        if total_chars + msg_chars > max_context_chars:
-            break
-        
-        context_history.append(msg_dict)
-        total_chars += msg_chars
-    
+    context_history = [{"role": m.role, "content": m.content} for m in context_messages]
+
     # Отправить запрос в RAG с историей диалога
-    # ✅ Теперь RAG возвращает request_id вместо полного ответа
     rag_request = {
         "query": request.query,
         "context": context_history,
-        "service_token": settings.RAG_SERVICE_TOKEN  # ✅ Токен в JSON
+        "enable_thinking": request.enable_thinking,  # Передаём выбор пользователя
+        "service_token": settings.RAG_SERVICE_TOKEN
     }
     
     try:
-        # RAG добавляет запрос в очередь и возвращает ID
         rag_response = requests.post(
-            f"{settings.RAG_URL}/rag/answer",
+            f"{settings.RAG_URL}/rag/answer/queue",
             json=rag_request,
-            timeout=5  # Теперь только надо добавить в очередь (быстро!)
+            timeout=120
         )
-        
+
         if rag_response.status_code != 200:
-            raise HTTPException(
-                status_code=500,
-                detail=f"RAG error: {rag_response.text}"
-            )
-        
+            detail = rag_response.json().get("detail", rag_response.text) if rag_response.headers.get('content-type') == 'application/json' else rag_response.text
+            raise HTTPException(status_code=500, detail=f"RAG error: {detail}")
+
         rag_data = rag_response.json()
         request_id = rag_data.get("request_id")
+
+        if not request_id:
+            raise HTTPException(status_code=500, detail="RAG returned no request_id")
         
     except requests.exceptions.Timeout:
-        raise HTTPException(status_code=504, detail="RAG timeout")
+        raise HTTPException(status_code=504, detail="RAG service timeout")
     except requests.exceptions.ConnectionError:
-        raise HTTPException(status_code=503, detail="RAG unavailable")
+        raise HTTPException(status_code=503, detail="RAG service unavailable")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"RAG error: {str(e)}")
-    
-    # Сохранить сообщения в диалог (промежуточное состояние)
-    user_msg = schemas_dialog.MessageCreate(
-        role="user",
-        content=request.query,
-        sources=None
-    )
-    crud_dialog.add_message(db, dialog.id, user_msg)
-    
-    # Bot сообщение со статусом "обработка"
-    bot_msg = schemas_dialog.MessageCreate(
-        role="bot",
-        content=f"⏳ Обрабатываю ваш вопрос (ID: {request_id})...",
-        sources=None
-    )
-    crud_dialog.add_message(db, dialog.id, bot_msg)
-    
-    # Вернуть ответ с ID запроса
+        raise HTTPException(status_code=500, detail=f"Request processing error: {str(e)}")
+
     return QueryResponse(
         request_id=request_id,
         status="pending",
@@ -201,7 +185,7 @@ async def get_rag_result(
     try:
         # Получаем результат от RAG
         rag_response = requests.get(
-            f"{settings.RAG_URL}/rag/result/{request_id}",
+            f"{settings.RAG_URL}/rag/answer/queue/{request_id}",
             timeout=5
         )
         
@@ -212,25 +196,13 @@ async def get_rag_result(
             raise HTTPException(status_code=500, detail="RAG error")
         
         result = rag_response.json()
-        
-        # Если результат готов, обновляем сообщение в диалоге
-        if result.get("status") == "completed":
-            # Обновляем bot сообщение с реальным ответом
-            response_text = result.get("response", "")
-            sources = result.get("sources", [])
-            
-            bot_msg = schemas_dialog.MessageCreate(
-                sender="bot",
-                text=response_text,
-                sources=sources
-            )
-            crud_dialog.add_message(db, dialog_id, bot_msg)
-        
         return result
         
     except requests.exceptions.Timeout:
-        raise HTTPException(status_code=504, detail="RAG timeout")
+        raise HTTPException(status_code=504, detail="RAG service timeout")
     except requests.exceptions.ConnectionError:
-        raise HTTPException(status_code=503, detail="RAG unavailable")
+        raise HTTPException(status_code=503, detail="RAG service unavailable")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"RAG error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching result: {str(e)}")

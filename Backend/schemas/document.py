@@ -1,17 +1,15 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from datetime import datetime
 from typing import Optional, List
-from core.enums import DocumentFormat, SyncStatus
+from core.enums import DocumentFormat, SyncStatus, AccessLevel
 
-
-# ---------------------------
-# DocumentVersion Schemas
-# ---------------------------
 
 class DocumentVersionBase(BaseModel):
     format: DocumentFormat
     content: Optional[str] = None
     file_path: Optional[str] = None
+    change_comment: Optional[str] = None
+    effective_from: Optional[datetime] = None
 
 
 class DocumentVersionCreate(DocumentVersionBase):
@@ -20,21 +18,19 @@ class DocumentVersionCreate(DocumentVersionBase):
 
 class DocumentVersionResponse(DocumentVersionBase):
     id: int
-    sync_status: SyncStatus  # ✅ Добавлено: статус синхронизации с RAG
+    sync_status: SyncStatus
     created_at: datetime
+    change_comment: Optional[str] = None
+    display_status: Optional[str] = None  # Человекочитаемый статус версии
 
     class Config:
         from_attributes = True
         use_enum_values = True
 
 
-# ---------------------------
-# Document Schemas
-# ---------------------------
-
 class DocumentBase(BaseModel):
     title: str
-    effective_from: Optional[datetime] = None
+    access_level: AccessLevel = AccessLevel.all
 
 
 class DocumentCreate(DocumentBase):
@@ -43,7 +39,7 @@ class DocumentCreate(DocumentBase):
 
 class DocumentUpdate(BaseModel):
     title: Optional[str] = None
-    effective_from: Optional[datetime] = None
+    access_level: Optional[AccessLevel] = None
 
 
 class DocumentResponse(DocumentBase):

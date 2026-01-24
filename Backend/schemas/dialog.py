@@ -6,8 +6,9 @@ from typing import List, Optional
 # Модель источника (документ, на который ссылается ответ)
 class SourceReference(BaseModel):
     document_id: int
-    version_id: int
-    chunk_index: int
+    version_id: int = 0
+    chunk_index: int = 0
+    title: Optional[str] = None  # Название документа для отображения
 
 
 class MessageBase(BaseModel):
@@ -42,6 +43,11 @@ class DialogCreate(DialogBase):
 class DialogUpdate(BaseModel):
     """Обновление диалога - JSON Body"""
     title: str  # обязательное поле при обновлении
+
+
+class MessageUpdate(BaseModel):
+    """Обновление сообщения - JSON Body"""
+    content: str  # новое содержимое сообщения
 
 
 class Dialog(DialogBase):

@@ -9,18 +9,38 @@ def create_feedback(db: Session, user_id: int, data: QueryFeedbackCreate) -> Que
     
     Параметры:
     - user_id: ID пользователя, подавшего жалобу
-    - data: QueryFeedbackCreate(user_question, bot_response, user_comment)
+    - data: QueryFeedbackCreate(message_id, dialog_id, rating, comment)
     
+    Заполняет user_question и bot_response из диалога/сообщения.
     Сохраняется в БД с автоматическим timestamp'ом.
-    dialog_id и message_id остаются NULL (опционально).
     """
+    # Получаем вопрос и ответ из сообщения если возможно
+    user_question = ""
+    bot_response = ""
+    
+    if data.message_id:
+        from models.dialog import Message
+        message = db.query(Message).filter(Message.id == data.message_id).first()
+        if message:
+            bot_response = message.content or ""
+            # Ищем предыдущее сообщение от пользователя (role == 'user')
+            if data.dialog_id:
+                prev_message = db.query(Message).filter(
+                    Message.dialog_id == data.dialog_id,
+                    Message.id < data.message_id,
+                    Message.role == 'user'
+                ).order_by(Message.id.desc()).first()
+                if prev_message:
+                    user_question = prev_message.content or ""
+    
     feedback = QueryFeedback(
-        user_question=data.user_question,
-        bot_response=data.bot_response,
-        user_comment=data.user_comment,
+        message_id=data.message_id,
+        dialog_id=data.dialog_id,
+        user_question=user_question,
+        bot_response=bot_response,
+        rating=data.rating,
+        user_comment=data.comment,
         user_id=user_id,
-        dialog_id=None,      # Опционально 
-        message_id=None,     # Опционально
         created_at=datetime.utcnow()
     )
     db.add(feedback)
@@ -39,11 +59,6 @@ def get_feedback_by_id(db: Session, feedback_id: int) -> QueryFeedback:
     return db.query(QueryFeedback).filter(QueryFeedback.id == feedback_id).first()
 
 
-def get_feedbacks_by_user(db: Session, user_id: int) -> list:
-    """Получить все жалобы конкретного пользователя"""
-    return db.query(QueryFeedback).filter(QueryFeedback.user_id == user_id).order_by(QueryFeedback.created_at.desc()).all()
-
-
 def delete_feedback(db: Session, feedback_id: int) -> bool:
     """Удалить жалобу (обработанную запись из журнала)"""
     feedback = db.query(QueryFeedback).filter(QueryFeedback.id == feedback_id).first()
@@ -57,3 +72,14 @@ def delete_feedback(db: Session, feedback_id: int) -> bool:
 def count_feedbacks(db: Session) -> int:
     """Получить общее количество жалоб"""
     return db.query(QueryFeedback).count()
+
+
+def update_feedback_status(db: Session, feedback_id: int, status: str) -> QueryFeedback:
+    """Обновить статус жалобы (new, acknowledged, resolved)"""
+    feedback = db.query(QueryFeedback).filter(QueryFeedback.id == feedback_id).first()
+    if not feedback:
+        return None
+    feedback.status = status
+    db.commit()
+    db.refresh(feedback)
+    return feedback
